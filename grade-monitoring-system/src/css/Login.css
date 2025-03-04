@@ -1,0 +1,84 @@
+.LoginPage {
+  width: 100vw;
+  height: 100vh;
+  background-color: #59bf8f;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: backgroundAnimation 10s infinite alternate;
+}
+
+@keyframes backgroundAnimation {
+  0% {
+    background-color: #59bf8f;
+  }
+  100% {
+    background-color: #3caea3;
+  }
+}
+
+.container {
+  background-color: #ffffff;
+  padding: 40px;
+  border-radius: 8px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+  max-width: 400px;
+  width: 100%;
+}
+
+.login-form {
+  display: flex;
+  flex-direction: column;
+}
+
+.login-form h2 {
+  text-align: center;
+  color: #333333;
+  margin-bottom: 20px;
+}
+
+.form-group {
+  margin-bottom: 20px;
+}
+
+.form-group label {
+  display: block;
+  font-weight: bold;
+  margin-bottom: 5px;
+  color: #878585;
+}
+
+.form-group input {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #cccccc;
+  border-radius: 4px;
+  font-size: 16px;
+  background: #ffffff;
+  color: black;
+}
+
+button {
+  width: 100%;
+  padding: 12px;
+  background-color: #59bf8f; /* Changed button color */
+  color: #ffffff;
+  border: none;
+  border-radius: 4px;
+  font-size: 16px;
+  cursor: pointer;
+  transition: background-color 0.3s ease;
+}
+
+button:hover {
+  background-color: #4230fe;
+}
+
+.session-token {
+  text-align: center;
+}
+
+.session-token h2 {
+  color: #333333;
+  margin-bottom: 20px;
+}

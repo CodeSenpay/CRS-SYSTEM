@@ -1,0 +1,74 @@
+/* Dashboard Layout Styles */
+.ant-layout {
+  background-color: #e6f7ff !important;
+}
+
+.content-wrapper {
+  height: 100%;
+  width: 100%;
+}
+
+/* Ensure content takes full height */
+.ant-layout-content {
+  display: flex;
+  flex-direction: column;
+  background-color: #e6f7ff !important;
+}
+
+/* Card styles */
+.ant-card {
+  border-radius: 8px;
+  overflow: hidden;
+  transition: all 0.3s ease;
+  background-color: #ffffff;
+}
+
+.ant-card-hoverable:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
+}
+
+/* Fix for any potential gaps */
+.ant-row {
+  margin-right: 0 !important;
+  margin-left: 0 !important;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .ant-layout-content {
+    padding: 12px !important;
+  }
+  
+  .ant-card {
+    margin-bottom: 12px;
+  }
+}
+
+/* Animation for page transitions */
+.page-enter {
+  opacity: 0;
+  transform: translateY(10px);
+}
+
+.page-enter-active {
+  opacity: 1;
+  transform: translateY(0);
+  transition: opacity 300ms, transform 300ms;
+}
+
+.page-exit {
+  opacity: 1;
+}
+
+.page-exit-active {
+  opacity: 0;
+  transition: opacity 300ms;
+}
+
+/* Background color for all content areas */
+.ant-layout-content, 
+.ant-layout-content > div,
+.content-wrapper {
+  background-color: #e6f7ff !important;
+}

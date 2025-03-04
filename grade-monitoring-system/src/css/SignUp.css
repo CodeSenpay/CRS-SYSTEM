@@ -1,0 +1,26 @@
+.signUpPage {
+  width: 100vw;
+  height: 100vh;
+  background-color: #2011aa;
+  background-image: url("../../assets/background.jpg");
+  background-size: cover;
+  background-repeat: no-repeat;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sign-up-container {
+  background-color: #ffffff;
+  padding: 20px;
+  border-radius: 8px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+  width: 90%;
+  height: 90vh;
+  overflow-y: auto;
+}
+
+.sign-up-form {
+  margin: auto;
+  width: 80%;
+}

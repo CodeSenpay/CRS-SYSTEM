@@ -1,0 +1,106 @@
+.sidebar {
+  color: white;
+  box-shadow: 2px 0 8px rgba(0, 0, 0, 0.15);
+}
+
+.logo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  background-color: #59bf8f;
+  position: relative;
+  height: 15vh;
+  animation: logoBackgroundAnimation 10s infinite alternate;
+}
+
+@keyframes logoBackgroundAnimation {
+  0% {
+    background-color: #59bf8f;
+  }
+  100% {
+    background-color: #3caea3;
+  }
+}
+
+.logoIcon:hover {
+  cursor: pointer;
+}
+
+.logoName {
+  font-size: 1.3rem;
+  font-weight: bolder;
+}
+
+.menu-bar {
+  height: 70vh;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  font-size: 1rem;
+  position: relative;
+  background-color: #2c3e50 !important;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.menu-bar::-webkit-scrollbar {
+  width: 4px;
+}
+
+.menu-bar::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+}
+
+.menu-bar::-webkit-scrollbar-track {
+  background-color: transparent;
+}
+
+.menu-bar .ant-menu-item-selected {
+  background-color: #59bf8f !important;
+}
+
+.menu-bar .ant-menu-submenu-selected > .ant-menu-submenu-title {
+  color: #59bf8f !important;
+}
+
+.userDropdown {
+  height: 15vh;
+  padding: 5px;
+  display: flex;
+  align-items: flex-end;
+}
+
+.page-header {
+  background-color: #59bf8f;
+}
+
+/* Animation classes for content */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.5s ease-out forwards;
+}
+
+.animate-fadeInUp {
+  animation: fadeInUp 0.5s ease-out forwards;
+}
