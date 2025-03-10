@@ -53,6 +53,7 @@ export default function User() {
             height: "40px",
           }}
           onClick={async () => {
+            console.log(userEmail);
             const response = await axios.post(
               "http://localhost:3000/api/auth/logout",
               { email: userEmail },
@@ -64,7 +65,7 @@ export default function User() {
             if (response.data.statuscode === 1) {
               navigate("/login");
             } else {
-              console.log(response.data.statuscode);
+              console.log(response.data);
               notifyError("Can't Signout");
             }
           }}
