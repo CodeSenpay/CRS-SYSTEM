@@ -1,12 +1,12 @@
 import { yupResolver } from "@hookform/resolvers/yup";
-import { Input, Modal } from "antd";
+import { Button, Input, Modal } from "antd";
 import axios from "axios";
 import "bootstrap/dist/css/bootstrap.min.css";
 
 import React, { useContext, useState } from "react";
 import Form from "react-bootstrap/Form";
 import { useForm } from "react-hook-form";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import * as Yup from "yup";
 import { authContext } from "../components/AuthContext";
 import Loading from "../components/Loading";
@@ -172,15 +172,12 @@ function Login() {
         } else {
           const response = await getUserLevel({ email: data.user_email });
           console.log(response);
-          if (response.user_level == "student" && response.success) {
-            navigate("/student-dashboard");
-          }
 
           if (response.user_level == "admin" && response.success) {
             navigate("/dashboard/home");
           }
 
-          if (response.user_level == "employee" && response.success) {
+          if (response.user_level == "instructor" && response.success) {
             navigate("/dashboard/home");
           }
         }
@@ -280,7 +277,7 @@ function Login() {
             >
               STUDENT GRADE MONITORING SYSTEM
             </h2>
-            <form onSubmit={handleSubmit(handleLogin)}>
+            <Form onSubmit={handleSubmit(handleLogin)}>
               <div className="form-group">
                 <Form.Floating className="mb-4">
                   <Form.Control
@@ -333,70 +330,36 @@ function Login() {
                   </Form.Control.Feedback>
                 </Form.Floating>
               </div>
-              <button
-                type="submit"
-                className="loginBtn"
+              <Button
+                type="primary"
+                htmlType="submit"
+                loading={loading}
                 style={{
                   width: "100%",
-                  padding: "12px",
-                  background:
-                    "linear-gradient(135deg, #6a11cb 0%, #2575fc 100%)",
-                  color: "#fff",
-                  border: "none",
-                  borderRadius: "8px",
-                  cursor: "pointer",
-                  marginTop: "16px",
-                  fontWeight: "600",
-                  fontSize: "16px",
-                  transition: "transform 0.2s, box-shadow 0.2s",
-                  boxShadow: "0 4px 10px rgba(37, 117, 252, 0.2)",
-                }}
-                onMouseOver={(e) => {
-                  e.currentTarget.style.transform = "translateY(-2px)";
-                  e.currentTarget.style.boxShadow =
-                    "0 6px 15px rgba(37, 117, 252, 0.3)";
-                }}
-                onMouseOut={(e) => {
-                  e.currentTarget.style.transform = "translateY(0)";
-                  e.currentTarget.style.boxShadow =
-                    "0 4px 10px rgba(37, 117, 252, 0.2)";
+                  height: "45px",
+                  marginTop: "1rem",
+                  backgroundColor: "#2575fc",
+                  borderColor: "#2575fc",
+                  borderRadius: "6px",
+                  fontSize: "1rem",
+                  fontWeight: "500",
                 }}
               >
-                Login
-              </button>
-            </form>
+                Sign In
+              </Button>
+            </Form>
+
+            {/* Footer text */}
             <p
               style={{
+                marginTop: "1.5rem",
                 textAlign: "center",
-                marginTop: "20px",
-                fontSize: "14px",
+                fontSize: "0.9rem",
                 color: "#555",
               }}
             >
-              Not registered yet?{" "}
-              <Link
-                to="/signup"
-                style={{
-                  color: "#2575fc",
-                  fontWeight: "600",
-                  textDecoration: "none",
-                }}
-              >
-                Sign Up Here
-              </Link>
+              Forgot your password? Contact your administrator.
             </p>
-            <div
-              style={{
-                textAlign: "center",
-                marginTop: "30px",
-                padding: "15px 0",
-                borderTop: "1px solid #eee",
-                color: "#777",
-                fontSize: "13px",
-              }}
-            >
-              Developed By: Robert Mayo Elumba
-            </div>
           </div>
         </div>
         {contextHolder}

@@ -1,5 +1,6 @@
-import { UserAddOutlined } from "@ant-design/icons";
+import { InboxOutlined, UserAddOutlined } from "@ant-design/icons";
 import {
+  Alert,
   Button,
   Card,
   Col,
@@ -10,17 +11,41 @@ import {
   Row,
   Select,
   Typography,
+  Upload,
 } from "antd";
 import axios from "axios";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 
-const { Title } = Typography;
+const { Title, Text } = Typography;
 const { Option } = Select;
+const { Dragger } = Upload;
 
 const StudentRegistration = () => {
   const [loading, setLoading] = useState(false);
+  const [uploadLoading, setUploadLoading] = useState(false);
+  const [fileList, setFileList] = useState([]);
+  const [uploadError, setUploadError] = useState(null);
+  const [verifyUser, setVerifyUser] = useState(null);
 
+  const verifyToken = async () => {
+    setLoading(true);
+    try {
+      const response = await axios.get(
+        "http://localhost:3000/api/auth/verify-jwt",
+        {
+          withCredentials: true,
+        }
+      );
+
+      setVerifyUser(response.data.user.userId);
+    } catch (err) {
+      setVerifyUser(undefined);
+      console.log(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
   const {
     control,
     handleSubmit,
@@ -34,6 +59,11 @@ const StudentRegistration = () => {
       semester: "First",
     },
   });
+
+  // Fetch user role on component mount
+  useEffect(() => {
+    verifyToken();
+  }, [verifyUser]);
 
   const onSubmit = async (data) => {
     setLoading(true);
@@ -70,8 +100,152 @@ const StudentRegistration = () => {
     }
   };
 
+  // Handle Excel file upload for bulk registration
+  const handleBulkUpload = async () => {
+    if (fileList.length === 0) {
+      setUploadError("Please select an Excel file to upload");
+      return;
+    }
+
+    setUploadLoading(true);
+    setUploadError(null);
+
+    const formData = new FormData();
+    formData.append("file", fileList[0].originFileObj);
+
+    try {
+      const response = await axios.post(
+        "http://localhost:3000/api/system/bulk-register-students",
+        formData,
+        {
+          headers: {
+            "Content-Type": "multipart/form-data",
+          },
+          withCredentials: true,
+        }
+      );
+
+      if (response.data.success) {
+        message.success(
+          `${
+            response.data.registeredCount || "Multiple"
+          } students registered successfully!`
+        );
+        setFileList([]);
+      } else {
+        setUploadError(response.data.message || "Bulk registration failed");
+        message.error(response.data.message || "Bulk registration failed");
+      }
+    } catch (error) {
+      console.error("Bulk registration error:", error);
+      setUploadError(
+        error.response?.data?.message ||
+          "Failed to process Excel file. Please check the file format and try again."
+      );
+      message.error(
+        error.response?.data?.message ||
+          "Failed to process Excel file. Please check the file format and try again."
+      );
+    } finally {
+      setUploadLoading(false);
+    }
+  };
+
+  // Props for the file upload component
+  const uploadProps = {
+    name: "file",
+    multiple: false,
+    fileList: fileList,
+    beforeUpload: (file) => {
+      const isExcel =
+        file.type ===
+          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
+        file.type === "application/vnd.ms-excel";
+
+      if (!isExcel) {
+        message.error("You can only upload Excel files!");
+        return Upload.LIST_IGNORE;
+      }
+
+      setFileList([file]);
+      return false; // Prevent auto upload
+    },
+    onRemove: () => {
+      setFileList([]);
+      setUploadError(null);
+    },
+    onChange: (info) => {
+      setFileList(info.fileList.slice(-1)); // Keep only the latest file
+    },
+  };
+
   return (
     <div style={{ padding: "24px", maxWidth: "1000px", margin: "0 auto" }}>
+      {/* Bulk Upload Section - Only visible to admins */}
+      {verifyUser === "admin" && (
+        <Card
+          style={{
+            boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
+            borderRadius: "8px",
+            marginBottom: "24px",
+          }}
+        >
+          <Title level={2} style={{ textAlign: "center", color: "#59bf8f" }}>
+            <UserAddOutlined /> Bulk Student Registration
+          </Title>
+          <Divider />
+
+          <Text>
+            Upload an Excel file (.xlsx or .xls) containing student information
+            for bulk registration. The Excel file should have columns matching
+            the student registration form fields.
+          </Text>
+
+          <div style={{ marginTop: "20px" }}>
+            <Dragger {...uploadProps}>
+              <p className="ant-upload-drag-icon">
+                <InboxOutlined />
+              </p>
+              <p className="ant-upload-text">
+                Click or drag Excel file to this area to upload
+              </p>
+              <p className="ant-upload-hint">
+                Support for a single Excel file upload. Please ensure your file
+                has the correct format.
+              </p>
+            </Dragger>
+          </div>
+
+          {uploadError && (
+            <Alert
+              message="Upload Error"
+              description={uploadError}
+              type="error"
+              showIcon
+              style={{ marginTop: "16px" }}
+            />
+          )}
+
+          <div style={{ marginTop: "20px" }}>
+            <Button
+              type="primary"
+              onClick={handleBulkUpload}
+              loading={uploadLoading}
+              disabled={fileList.length === 0}
+              style={{
+                width: "100%",
+                height: "40px",
+                backgroundColor: "#59bf8f",
+                borderColor: "#59bf8f",
+              }}
+            >
+              Upload and Register Students
+            </Button>
+          </div>
+        </Card>
+      )}
+
+      {/* Individual Student Registration Form */}
       <Card
         style={{
           boxShadow: "0 4px 12px rgba(0,0,0,0.1)",

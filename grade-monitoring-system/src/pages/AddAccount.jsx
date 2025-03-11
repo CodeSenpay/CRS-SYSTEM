@@ -1,19 +1,16 @@
 import { yupResolver } from "@hookform/resolvers/yup";
 import axios from "axios";
-import { useContext, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import Button from "react-bootstrap/Button";
 import Form from "react-bootstrap/Form";
 import { useForm } from "react-hook-form";
 import * as yup from "yup";
-import { authContext } from "../components/AuthContext";
 import Loading from "../components/Loading";
 import { notifyError, notifySucccess } from "../components/ToastUtils";
-import { getUserLevel } from "../utils/authUtils";
 
 //--------------------------------------------------------
 const schema = yup
   .object({
-    user_id: yup.string().required("Employee ID is required"),
     user_name: yup.string().required("Employee Name is required"),
     user_email: yup
       .string()
@@ -29,8 +26,8 @@ const schema = yup
 //----------------------------------------------------------------
 function AddAccount() {
   const [isLoading, setIsLoading] = useState(false);
-  const [userRole, setUserRole] = useState();
-  const { user } = useContext(authContext);
+  const [verifyUser, setVerifyUser] = useState(null);
+
   const {
     register,
     handleSubmit,
@@ -38,11 +35,30 @@ function AddAccount() {
     reset,
   } = useForm({ resolver: yupResolver(schema) });
 
+  const verifyToken = async () => {
+    setIsLoading(true);
+    try {
+      const response = await axios.get(
+        "http://localhost:3000/api/auth/verify-jwt",
+        {
+          withCredentials: true,
+        }
+      );
+
+      setVerifyUser(response.data.user.userId);
+    } catch (err) {
+      setVerifyUser(undefined);
+      console.log(err.message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleAddAccount = async (data) => {
     setIsLoading(true);
     const newDataWithUserLevel = {
       ...data,
-      user_level: "admin",
+      user_level: "instructor",
     };
     try {
       const response = await axios.post(
@@ -63,23 +79,23 @@ function AddAccount() {
     console.log(data);
   };
 
-  const getUserRole = async () => {
-    const response = await getUserLevel({ email: user });
-    setUserRole(response["user_level"]);
-    console.log(response);
-  };
+  // const getUserRole = async () => {
+  //   const response = await getUserLevel({ email: user });
+  //   setUserRole(response["user_level"]);
+  //   console.log(response);
+  // };
 
   useEffect(() => {
-    getUserRole();
+    verifyToken();
   }, []);
 
   return (
     <div className="w-100">
       {isLoading && <Loading />}
-      {userRole != "admin" && (
+      {verifyUser != "admin" && (
         <h1>Only for Admins, not accessible to employee</h1>
       )}
-      {userRole === "admin" && (
+      {verifyUser === "admin" && (
         <>
           <h1>Add Account Page</h1>
           <form
@@ -87,20 +103,6 @@ function AddAccount() {
             style={{ opacity: isLoading ? 0.5 : 1 }}
           >
             <div className="form-group p-5 d-flex flex-column w-100 h-100 justify-content-center gap-3">
-              <Form.Floating>
-                <Form.Control
-                  id="userId"
-                  type="text"
-                  placeholder="User ID"
-                  {...register("user_id")}
-                  isInvalid={errors.user_id?.message}
-                />
-                <label htmlFor="userId">Employee ID</label>
-                <Form.Control.Feedback type="invalid">
-                  {errors.user_id?.message}
-                </Form.Control.Feedback>
-              </Form.Floating>
-
               <Form.Floating>
                 <Form.Control
                   id="fullname"
