@@ -51,14 +51,7 @@ const StudentRegistration = () => {
     handleSubmit,
     reset,
     formState: { errors },
-  } = useForm({
-    defaultValues: {
-      gender: "male",
-      yearLevel: "1",
-      course: "Computer Science",
-      semester: "First",
-    },
-  });
+  } = useForm({});
 
   // Fetch user role on component mount
   useEffect(() => {
