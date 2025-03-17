@@ -99,7 +99,6 @@ function AddGrades() {
   };
 
   const fetchStudentsForSubject = async (subject) => {
-    console.log(subject);
     setLoadingStudents(true);
     try {
       // Call the API endpoint to fetch students for the selected subject
@@ -117,13 +116,15 @@ function AddGrades() {
       );
 
       if (response.data.success && response.data.data.length > 0) {
+        // console.log(response.data.data);
         // Transform the data to include grade state
         const studentsWithGrades = response.data.data.map((student, index) => ({
           ...student,
           key: index.toString(),
-          grade: student.grade || null,
-          gradeStatus: getGradeStatus(student.grade),
+          grade: student.score || 0,
+          gradeStatus: getGradeStatus(student.score),
         }));
+        console.log(studentsWithGrades);
         setStudentData(studentsWithGrades);
         message.success(
           `Loaded ${studentsWithGrades.length} students for ${subject.subject_code}`
@@ -262,7 +263,7 @@ function AddGrades() {
           min={1.0}
           max={5.0}
           step={0.1}
-          value={record.grade}
+          value={record.grade || 0}
           onChange={(value) => handleGradeChange(value, record)}
           style={{ width: "100%" }}
           placeholder="Enter grade"
@@ -335,7 +336,9 @@ function AddGrades() {
             type="primary"
             size="small"
             className="bg-blue-500"
-            onClick={() => handleViewStudents(record)}
+            onClick={() => {
+              handleViewStudents(record);
+            }}
           >
             <span className="text-xs">VIEW STUDENTS</span>
           </Button>
