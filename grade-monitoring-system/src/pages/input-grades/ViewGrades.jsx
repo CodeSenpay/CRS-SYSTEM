@@ -7,21 +7,34 @@ import {
   Alert,
   Button,
   Card,
+  Col,
+  Form,
   Input,
+  Row,
+  Select,
   Space,
   Spin,
   Table,
+  Tag,
   Typography,
 } from "antd";
 import axios from "axios";
 import { useEffect, useState } from "react";
 
 const { Title, Text } = Typography;
+const { Option } = Select;
 
 function ViewGrades() {
   const [students, setStudents] = useState([]);
   const [loading, setLoading] = useState(false);
   const [studentId, setStudentId] = useState("");
+  const [yearLevel, setYearLevel] = useState("");
+  const [semester, setSemester] = useState("");
+  const [subjectCode, setSubjectCode] = useState("");
+  const [subjects, setSubjects] = useState([]);
+  const [filteredSubjects, setFilteredSubjects] = useState([]);
+  const [yearLevels] = useState(["1", "2", "3", "4"]);
+  const [semesters] = useState(["First", "Second", "Summer"]);
 
   const fetchStudentGrades = async (id = "") => {
     try {
@@ -56,10 +69,15 @@ function ViewGrades() {
     try {
       setLoading(true);
 
-      // Using axios post request to fetch student grades
+      // Modified to use yearLevel, semester, and subject filters
       const response = await axios.get(
         "http://localhost:3000/api/system/all-student-grades",
         {
+          params: {
+            yearLevel: yearLevel,
+            semester: semester,
+            subjectCode: subjectCode,
+          },
           withCredentials: true,
         }
       );
@@ -77,17 +95,89 @@ function ViewGrades() {
     }
   };
 
+  const fetchSubjects = async () => {
+    try {
+      const response = await axios.get(
+        "http://localhost:3000/api/system/all-subjects",
+        { withCredentials: true }
+      );
+
+      if (response.data && response.data.data) {
+        setSubjects(response.data.data);
+        filterSubjects(response.data.data, yearLevel, semester);
+      }
+    } catch (err) {
+      console.error("Error fetching subjects:", err);
+    }
+  };
+
+  // Filter subjects based on year level and semester
+  const filterSubjects = (allSubjects, yearLevel, semester) => {
+    if (!yearLevel && !semester) {
+      setFilteredSubjects(allSubjects);
+      return;
+    }
+    // console.log("Year Level: " + yearLevel);
+    // console.log("Semester: " + semester);
+    // console.log("All Subjects: " + allSubjects);
+    // console.log(Array.isArray(allSubjects));
+    const filtered = Array.isArray(allSubjects)
+      ? allSubjects.filter((subject) => {
+          // Convert both to the same type (string) for comparison
+          const subjectYearLevel = String(subject.year_level);
+          const filterYearLevel = String(yearLevel);
+          const subjectSemester = String(subject.semester);
+          const filterSemester = String(semester);
+
+          const matchYearLevel =
+            !yearLevel || subjectYearLevel === filterYearLevel;
+          const matchSemester = !semester || subjectSemester === filterSemester;
+
+          console.log(subjectYearLevel, filterYearLevel);
+          console.log(subjectSemester, filterSemester);
+
+          return matchYearLevel && matchSemester;
+        })
+      : [];
+
+    setFilteredSubjects(filtered);
+
+    // If current selected subject doesn't match filters, clear it
+    if (subjectCode && !filtered.some((s) => s.subject_code === subjectCode)) {
+      setSubjectCode("");
+    }
+  };
+
   useEffect(() => {
     // Fetch all student grades on initial load
     fetchAllStudentGrades();
+    fetchSubjects();
   }, []);
+
+  // Filter subjects when year level or semester changes
+  useEffect(() => {
+    filterSubjects(subjects, yearLevel, semester);
+  }, [yearLevel, semester]);
+
+  // Refetch grades when filters change
+  useEffect(() => {
+    if (!studentId) {
+      fetchAllStudentGrades();
+    }
+  }, [yearLevel, semester, subjectCode]);
 
   const handleSearch = () => {
     if (studentId.trim()) {
       fetchStudentGrades(studentId.trim());
+      setYearLevel("");
+      setSemester("");
+      setSubjectCode("");
     } else {
-      // If search field is empty, fetch all grades
-      fetchStudentGrades();
+      // If search field is empty, fetch all grades with filters
+      fetchAllStudentGrades();
+      setYearLevel("");
+      setSemester("");
+      setSubjectCode("");
     }
   };
 
@@ -95,6 +185,25 @@ function ViewGrades() {
     if (e.key === "Enter") {
       handleSearch();
     }
+  };
+
+  const handleReset = () => {
+    setStudentId("");
+    setYearLevel("");
+    setSemester("");
+    setSubjectCode("");
+    setFilteredSubjects(subjects);
+    fetchAllStudentGrades();
+  };
+
+  const handleYearLevelChange = (value) => {
+    setYearLevel(value);
+    setSubjectCode(""); // Reset subject when year level changes
+  };
+
+  const handleSemesterChange = (value) => {
+    setSemester(value);
+    setSubjectCode(""); // Reset subject when semester changes
   };
 
   const columns = [
@@ -122,13 +231,23 @@ function ViewGrades() {
       title: "Grade",
       dataIndex: "score",
       key: "score",
-      render: (score) => (
-        <span
-          className={parseFloat(score) < 3.0 ? "text-red-500 font-bold" : ""}
-        >
-          {score}
-        </span>
-      ),
+      render: (score) => {
+        // Handle null, undefined or non-numeric values
+        if (score === null || score === undefined || isNaN(parseFloat(score))) {
+          return <span>-</span>;
+        }
+
+        const numericScore = parseFloat(score);
+        return numericScore <= 3.0 ? (
+          <Tag color="success" className="font-bold">
+            {score}
+          </Tag>
+        ) : (
+          <Tag color="error" className="font-bold">
+            {score}
+          </Tag>
+        );
+      },
     },
     {
       title: "Semester",
@@ -136,9 +255,9 @@ function ViewGrades() {
       key: "semester",
     },
     {
-      title: "Year",
-      dataIndex: "year",
-      key: "year",
+      title: "Year Level",
+      dataIndex: "year_level",
+      key: "year_level",
     },
   ];
 
@@ -155,7 +274,8 @@ function ViewGrades() {
     console.log(grades.reduce((sum, grade) => sum + grade, 0) / grades.length);
     return {
       avg: (
-        grades.reduce((sum, grade) => sum + parseFloat(grade), 0) / grades.length
+        grades.reduce((sum, grade) => sum + parseFloat(grade), 0) /
+        grades.length
       ).toFixed(2),
       max: Math.max(...grades),
       min: Math.min(...grades),
@@ -191,40 +311,90 @@ function ViewGrades() {
           </div>
         }
       >
-        <div className="mb-6">
-          <Space>
-            <Input
-              placeholder="Enter Student ID"
-              value={studentId}
-              onChange={(e) => setStudentId(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  handleKeyPress(e);
-                }
-              }}
-              style={{ width: 200 }}
-              prefix={<SearchOutlined className="text-gray-400" />}
-            />
-            <Button
-              type="primary"
-              onClick={handleSearch}
-              icon={<SearchOutlined />}
-            >
-              Search
-            </Button>
-            {studentId && (
-              <Button
-                onClick={() => {
-                  setStudentId("");
-                  fetchStudentGrades();
-                }}
-              >
-                Clear
-              </Button>
-            )}
-          </Space>
-        </div>
-        <br />
+        <Form layout="vertical" className="mb-6">
+          <Row gutter={[16, 16]}>
+            <Col xs={24} md={6}>
+              <Form.Item label="Student ID" className="mb-2">
+                <Input
+                  placeholder="Enter Student ID"
+                  value={studentId}
+                  onChange={(e) => setStudentId(e.target.value)}
+                  onKeyDown={handleKeyPress}
+                  prefix={<SearchOutlined className="text-gray-400" />}
+                />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={6}>
+              <Form.Item label="Year Level" className="mb-2">
+                <Select
+                  placeholder="Select Year Level"
+                  value={yearLevel}
+                  onChange={handleYearLevelChange}
+                  style={{ width: "100%" }}
+                  allowClear
+                >
+                  {yearLevels.map((y) => (
+                    <Option key={y} value={y}>
+                      {y}
+                    </Option>
+                  ))}
+                </Select>
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={6}>
+              <Form.Item label="Semester" className="mb-2">
+                <Select
+                  placeholder="Select Semester"
+                  value={semester}
+                  onChange={handleSemesterChange}
+                  style={{ width: "100%" }}
+                  allowClear
+                >
+                  {semesters.map((sem) => (
+                    <Option key={sem} value={sem}>
+                      {sem}
+                    </Option>
+                  ))}
+                </Select>
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={6}>
+              <Form.Item label="Subject" className="mb-2">
+                <Select
+                  placeholder="Select Subject"
+                  value={subjectCode}
+                  onChange={setSubjectCode}
+                  style={{ width: "100%" }}
+                  allowClear
+                  disabled={
+                    filteredSubjects.length === 0 && (yearLevel || semester)
+                  }
+                >
+                  {filteredSubjects.map((subject) => (
+                    <Option
+                      key={subject.subject_code}
+                      value={subject.subject_code}
+                    >
+                      {subject.subject_code} - {subject.subject_name}
+                    </Option>
+                  ))}
+                </Select>
+              </Form.Item>
+            </Col>
+            <Col xs={24}>
+              <Space>
+                <Button
+                  type="primary"
+                  onClick={handleSearch}
+                  icon={<SearchOutlined />}
+                >
+                  Search
+                </Button>
+                <Button onClick={handleReset}>Reset Filters</Button>
+              </Space>
+            </Col>
+          </Row>
+        </Form>
 
         {loading && (
           <div className="text-center py-10">
@@ -241,7 +411,7 @@ function ViewGrades() {
                 description={
                   studentId
                     ? `No grades found for student ID: ${studentId}`
-                    : "No student grades available at this time."
+                    : "No student grades available for the selected filters."
                 }
                 type="info"
                 showIcon
@@ -252,7 +422,7 @@ function ViewGrades() {
                   dataSource={students}
                   columns={columns}
                   rowKey={(record) =>
-                    `${record.student_number}-${record.subject_code}-${record.semester}-${record.year}`
+                    `${record.student_number}-${record.subject_code}-${record.semester}-${record.year_level}`
                   }
                   pagination={{ pageSize: 10 }}
                   className="shadow-sm"
@@ -285,14 +455,14 @@ function ViewGrades() {
                   <div className="stat-card p-4 border rounded-lg text-center bg-green-50">
                     <Text type="secondary">Highest Grade</Text>
                     <div className="text-xl font-bold text-green-600">
-                      {stats.max}
+                      {stats.min}
                     </div>
                   </div>
 
                   <div className="stat-card p-4 border rounded-lg text-center bg-red-50">
                     <Text type="secondary">Lowest Grade</Text>
                     <div className="text-xl font-bold text-red-600">
-                      {stats.min}
+                      {stats.max}
                     </div>
                   </div>
                 </div>

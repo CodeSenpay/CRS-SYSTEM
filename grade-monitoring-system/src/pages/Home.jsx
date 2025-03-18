@@ -13,20 +13,78 @@ import {
   Statistic,
   Typography,
 } from "antd";
+import axios from "axios";
 import { useEffect, useState } from "react";
 
 const { Title, Paragraph } = Typography;
 
 function Home() {
   const [isLoaded, setIsLoaded] = useState(false);
+  const [statistics, setStatistics] = useState({
+    studentCount: 0,
+    subjectCount: 0,
+    gradeAverage: 0,
+  });
 
   useEffect(() => {
-    // Simulate loading delay
-    const timer = setTimeout(() => {
-      setIsLoaded(true);
-    }, 500);
+    const fetchDashboardData = async () => {
+      try {
+        // Fetch all student grades
+        const gradesResponse = await axios.get(
+          "http://localhost:3000/api/system/all-student-grades",
+          {
+            withCredentials: true,
+          }
+        );
 
-    return () => clearTimeout(timer);
+        // Fetch all subjects
+        const subjectsResponse = await axios.get(
+          "http://localhost:3000/api/system/get-all-subjects",
+          {
+            withCredentials: true,
+          }
+        );
+
+        const gradesData = Array.isArray(gradesResponse.data)
+          ? gradesResponse.data
+          : [];
+        const subjectsData = subjectsResponse.data.data || [];
+
+        // Calculate statistics
+        if (gradesData.length > 0) {
+          // Get unique student count
+          const uniqueStudents = [
+            ...new Set(gradesData.map((item) => item.student_number)),
+          ];
+
+          // Calculate grade average
+          const grades = gradesData
+            .map((student) => student.score)
+            .filter((grade) => !isNaN(grade));
+
+          const gradeAverage =
+            grades.length > 0
+              ? (
+                  grades.reduce((sum, grade) => sum + parseFloat(grade), 0) /
+                  grades.length
+                ).toFixed(1)
+              : 0;
+
+          setStatistics({
+            studentCount: uniqueStudents.length,
+            subjectCount: subjectsData.length,
+            gradeAverage: gradeAverage,
+          });
+        }
+      } catch (err) {
+        console.error("Error fetching dashboard data:", err);
+        // Keep defaults in case of error
+      } finally {
+        setIsLoaded(true);
+      }
+    };
+
+    fetchDashboardData();
   }, []);
 
   if (!isLoaded) {
@@ -102,7 +160,7 @@ function Home() {
               >
                 <Statistic
                   title={<span className="text-lg font-medium">Students</span>}
-                  value={256}
+                  value={statistics.studentCount}
                   prefix={<UserOutlined className="mr-2" />}
                   valueStyle={{
                     color: "#59bf8f",
@@ -134,8 +192,8 @@ function Home() {
                 className="h-full shadow-md border-t-4 border-t-[#3caea3] rounded-lg transition-all hover:transform hover:scale-[1.02]"
               >
                 <Statistic
-                  title={<span className="text-lg font-medium">Courses</span>}
-                  value={42}
+                  title={<span className="text-lg font-medium">Subjects</span>}
+                  value={statistics.subjectCount}
                   prefix={<BookOutlined className="mr-2" />}
                   valueStyle={{
                     color: "#3caea3",
@@ -145,13 +203,13 @@ function Home() {
                 />
                 <Divider />
                 <Paragraph className="text-gray-600">
-                  Active courses being monitored
+                  Total subjects being monitored
                 </Paragraph>
                 <Button
                   type="link"
                   className="p-0 text-[#3caea3] font-medium hover:text-[#59bf8f]"
                 >
-                  Manage courses →
+                  Manage subjects →
                 </Button>
               </Card>
             </div>
@@ -170,7 +228,7 @@ function Home() {
                   title={
                     <span className="text-lg font-medium">Grade Average</span>
                   }
-                  value={85.7}
+                  value={statistics.gradeAverage}
                   precision={1}
                   suffix="%"
                   prefix={<LineChartOutlined className="mr-2" />}
