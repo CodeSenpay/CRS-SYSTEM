@@ -153,27 +153,34 @@ function ViewCluster() {
           extractedYearLevel = student.course.replace("Year ", "");
         }
 
+        // Get student grade information
+        const grade = parseFloat(student.average_score || 0);
+
+        // Update: Only consider "At Risk" if GPA is between 3.5-5.0
+        const isAtRisk = grade >= 3.5;
+
         const studentData = {
           id: student.student_number || "Unknown ID",
           name:
             `${student.first_name || ""} ${student.last_name || ""}`.trim() ||
             "Unknown Name",
           course: student.course || "Unknown Course",
-          grade: parseFloat(student.average_score || 0),
-          isAtRisk: student.is_at_risk || false,
+          grade: grade,
+          isAtRisk: isAtRisk, // Updated "At Risk" determination
           recommendation: student.recommendation || null,
           yearLevel: extractedYearLevel,
           semester: student.semester || "",
         };
 
-        // Map clusters correctly for Philippine grading system (lower is better)
-        // Cluster A (best scores) → high performance
-        // Cluster C (worst scores) → low performance
-        if (student.cluster === "A") {
+        // Updated clustering based on specific grade ranges:
+        // High: 1.0-1.7
+        // Medium: 1.8-2.7
+        // Low: 2.8-5.0
+        if (grade <= 1.7) {
           clusterData.high.push(studentData);
-        } else if (student.cluster === "B") {
+        } else if (grade <= 2.7) {
           clusterData.medium.push(studentData);
-        } else if (student.cluster === "C") {
+        } else {
           clusterData.low.push(studentData);
         }
       } catch (studentError) {
@@ -253,15 +260,20 @@ function ViewCluster() {
     {
       title: "Status",
       key: "status",
-      render: (_, record) => (
-        <span>
-          {record.isAtRisk ? (
-            <span className="text-red-500 font-bold">At Risk</span>
-          ) : (
-            <span className="text-green-500">Good Standing</span>
-          )}
-        </span>
-      ),
+      render: (_, record) => {
+        if (record.isAtRisk) {
+          return <span className="text-red-500 font-bold">At Risk</span>;
+        } else if (record.grade >= 2.8) {
+          // Low performer but not at risk (GPA 2.8-3.4)
+          return (
+            <span className="text-orange-500 font-semibold">
+              Needs Improvement
+            </span>
+          );
+        } else {
+          return <span className="text-green-500">Good Standing</span>;
+        }
+      },
     },
     {
       title: "Recommendation",
@@ -347,7 +359,7 @@ function ViewCluster() {
               <div className="text-sm text-gray-600">
                 Students with excellent academic standing
                 <div className="font-mono bg-green-200 text-green-800 rounded-md px-2 py-1 mt-2 inline-block">
-                  1.0-2.0
+                  1.0-1.7
                 </div>
               </div>
             </div>
@@ -364,7 +376,7 @@ function ViewCluster() {
               <div className="text-sm text-gray-600">
                 Students with good academic standing
                 <div className="font-mono bg-blue-200 text-blue-800 rounded-md px-2 py-1 mt-2 inline-block">
-                  2.0-3.0
+                  1.8-2.7
                 </div>
               </div>
             </div>
@@ -381,7 +393,11 @@ function ViewCluster() {
               <div className="text-sm text-gray-600">
                 Students who may need academic intervention
                 <div className="font-mono bg-red-200 text-red-800 rounded-md px-2 py-1 mt-2 inline-block">
-                  3.0-5.0
+                  2.8-5.0
+                </div>
+                <div className="mt-2 text-xs">
+                  <span className="font-bold">At Risk:</span> Students with
+                  grades 3.5-5.0
                 </div>
               </div>
             </div>
@@ -470,6 +486,9 @@ function ViewCluster() {
             Philippine Grading System: 1.0 (Excellent) to 5.0 (Failed) - 3.0 or
             lower is passing
           </p>
+          <p className="mt-1">
+            High: 1.0-1.7 | Medium: 1.8-2.7 | Low: 2.8-5.0 | At Risk: 3.5-5.0
+          </p>
         </div>
       </div>
 
@@ -552,21 +571,21 @@ function ViewCluster() {
           <TabPane tab="All Clusters" key="all">
             <div className="space-y-6">
               {renderClusterCard(
-                "High Performance (1.0-2.0)",
+                "High Performance (1.0-1.7)",
                 clusters.high,
                 { start: "#52c41a", end: "#389e0d" },
                 <TeamOutlined style={{ color: "white" }} />
               )}
 
               {renderClusterCard(
-                "Medium Performance (2.0-3.0)",
+                "Medium Performance (1.8-2.7)",
                 clusters.medium,
                 { start: "#1890ff", end: "#096dd9" },
                 <TeamOutlined style={{ color: "white" }} />
               )}
 
               {renderClusterCard(
-                "Low Performance (3.0-5.0)",
+                "Low Performance (2.8-5.0)",
                 clusters.low,
                 { start: "#ff4d4f", end: "#cf1322" },
                 <TeamOutlined style={{ color: "white" }} />
@@ -575,7 +594,7 @@ function ViewCluster() {
           </TabPane>
           <TabPane tab="High Performance" key="high">
             {renderClusterCard(
-              "High Performance (1.0-2.0)",
+              "High Performance (1.0-1.7)",
               clusters.high,
               { start: "#52c41a", end: "#389e0d" },
               <TeamOutlined style={{ color: "white" }} />
@@ -583,7 +602,7 @@ function ViewCluster() {
           </TabPane>
           <TabPane tab="Medium Performance" key="medium">
             {renderClusterCard(
-              "Medium Performance (2.0-3.0)",
+              "Medium Performance (1.8-2.7)",
               clusters.medium,
               { start: "#1890ff", end: "#096dd9" },
               <TeamOutlined style={{ color: "white" }} />
@@ -591,7 +610,7 @@ function ViewCluster() {
           </TabPane>
           <TabPane tab="Low Performance" key="low">
             {renderClusterCard(
-              "Low Performance (3.0-5.0)",
+              "Low Performance (2.8-5.0)",
               clusters.low,
               { start: "#ff4d4f", end: "#cf1322" },
               <TeamOutlined style={{ color: "white" }} />

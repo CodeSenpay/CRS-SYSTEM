@@ -14,6 +14,7 @@ import {
   Col,
   Descriptions,
   Divider,
+  Empty,
   Form,
   List,
   Row,
@@ -31,7 +32,6 @@ const { Step } = Steps;
 
 function ShiftAdvisories() {
   const [loading, setLoading] = useState(false);
-  const [atRiskStudents, setAtRiskStudents] = useState([]);
   const [filteredStudents, setFilteredStudents] = useState([]);
   const [error, setError] = useState(null);
   const [currentStudent, setCurrentStudent] = useState(null);
@@ -40,6 +40,8 @@ function ShiftAdvisories() {
   const [hasSearched, setHasSearched] = useState(false);
   const [yearLevels] = useState(["1", "2", "3", "4"]);
   const [semesters] = useState(["First", "Second", "Summer"]);
+  const [subjectLoading, setSubjectLoading] = useState(false);
+  const [studentSubjects, setStudentSubjects] = useState([]);
 
   // Program options that can be recommended
   const programOptions = [
@@ -145,11 +147,32 @@ function ShiftAdvisories() {
         throw new Error(data.message || "Error fetching student data");
       }
 
-      // Process to find at-risk students (students in the low cluster with cluster C)
+      // Process to find at-risk students using the same threshold as ViewCluster.jsx
       const atRiskStudentsData = data.data
         .filter((student) => {
-          // Check for at-risk flag or cluster C (low performance)
-          return student.is_at_risk || student.cluster === "C";
+          // Filter by year level
+          let matchesYearLevel = false;
+
+          // Check direct year_level field
+          if (student.year_level === yearLevel) {
+            matchesYearLevel = true;
+          }
+          // Extract year level from course field (format: "Year X")
+          else if (student.course && student.course.startsWith("Year ")) {
+            const courseYearLevel = student.course.replace("Year ", "");
+            if (courseYearLevel === yearLevel) {
+              matchesYearLevel = true;
+            }
+          }
+
+          // Filter by semester
+          const matchesSemester = student.semester === semester;
+
+          // Updated filter: only include students with GPA 3.5-5.0 as at-risk
+          const avgGrade = parseFloat(student.average_score || 0);
+          const isAtRisk = avgGrade >= 3.5;
+
+          return matchesYearLevel && matchesSemester && isAtRisk;
         })
         .map((student) => {
           // Extract year level from course field if needed
@@ -165,48 +188,6 @@ function ShiftAdvisories() {
           // Get student grade information
           const avgGrade = parseFloat(student.average_score || 0);
 
-          // Analyze subject strengths and weaknesses based on grades
-          const strengths = [];
-          const weaknesses = [];
-
-          // Add some mock subject data since we don't have actual subject breakdowns
-          if (student.subjects) {
-            // If we have subject data, use it
-            student.subjects.forEach((subject) => {
-              if (subject.grade <= 2.0) {
-                strengths.push(subject.name);
-              } else if (subject.grade >= 3.0) {
-                weaknesses.push(subject.name);
-              }
-            });
-          } else {
-            // Mock data if no subjects available
-            if (avgGrade <= 2.5) {
-              strengths.push("Communication");
-              if (student.student_number % 2 === 0) {
-                strengths.push("Creative Thinking");
-              } else {
-                strengths.push("Problem Solving");
-              }
-            }
-
-            // Add weaknesses based on their cluster
-            if (student.cluster === "C") {
-              weaknesses.push("Mathematics");
-              weaknesses.push("Programming");
-              if (student.student_number % 3 === 0) {
-                weaknesses.push("Data Structures");
-              }
-            }
-          }
-
-          // Generate program recommendations
-          const recommendedPrograms = generateRecommendations(
-            strengths,
-            weaknesses,
-            avgGrade
-          );
-
           return {
             id: student.student_number || "Unknown ID",
             name:
@@ -217,21 +198,70 @@ function ShiftAdvisories() {
             yearLevel: extractedYearLevel,
             semester: student.semester || "",
             cluster: student.cluster || "C",
-            strengths,
-            weaknesses,
-            recommendedPrograms,
+            // We'll fetch real subject data when a student is selected
+            strengths: [],
+            weaknesses: [],
+            // We'll generate recommendations after fetching subject data
+            recommendedPrograms: [],
+            rawData: student, // Store original data for reference
           };
         });
 
-      setAtRiskStudents(atRiskStudentsData);
       setFilteredStudents(atRiskStudentsData);
     } catch (error) {
       console.error("Error fetching at-risk students:", error);
       setError(`Unable to fetch student data. Error: ${error.message}`);
-      setAtRiskStudents([]);
       setFilteredStudents([]);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // New function to fetch a student's actual subject data
+  const fetchStudentSubjects = async (studentId) => {
+    setSubjectLoading(true);
+    try {
+      const response = await fetch("/api/system/student-grades", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          studentId: studentId,
+          semester: semester,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch student grades: ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      // Transform the API response into our expected subject format
+      const subjects = data.map((grade) => ({
+        name: grade.subject_name,
+        code: grade.subject_code,
+        grade: parseFloat(grade.score) || 0,
+        units: 3, // Assuming 3 units as default since API doesn't provide units
+        isPassing: parseFloat(grade.score) <= 3.0,
+        semester: grade.semester,
+      }));
+
+      // Filter by the selected semester if it exists
+      const filteredSubjects = semester
+        ? subjects.filter((subject) => subject.semester === semester)
+        : subjects;
+
+      // Sort by grade (best performance first)
+      filteredSubjects.sort((a, b) => a.grade - b.grade);
+
+      return filteredSubjects;
+    } catch (error) {
+      console.error("Error fetching student grades:", error);
+      return []; // Return empty array in case of error
+    } finally {
+      setSubjectLoading(false);
     }
   };
 
@@ -338,9 +368,9 @@ function ShiftAdvisories() {
     setYearLevel("");
     setSemester("");
     setHasSearched(false);
-    setAtRiskStudents([]);
     setFilteredStudents([]);
     setCurrentStudent(null);
+    setStudentSubjects([]);
   };
 
   // When filters change AND both are selected, fetch data
@@ -350,8 +380,100 @@ function ShiftAdvisories() {
     }
   }, [yearLevel, semester]);
 
-  const handleViewDetails = (student) => {
-    setCurrentStudent(student);
+  const handleViewDetails = async (student) => {
+    // Fetch the student's actual grades for the selected semester
+    const subjects = await fetchStudentSubjects(student.id);
+    setStudentSubjects(subjects);
+
+    // Group subjects by strength and weakness criteria
+    // Strengths: Only exceptional performances (below 1.7)
+    // Weaknesses: Failing grades (above 3.0)
+    const strengthSubjects = subjects.filter((s) => s.grade < 1.7);
+    const weaknessSubjects = subjects.filter((s) => s.grade > 3.0);
+
+    // Extract subject names for recommendation engine
+    const strengths = strengthSubjects.map((s) => s.name);
+    const weaknesses = weaknessSubjects.map((s) => s.name);
+
+    // Update UI to show that we're analyzing only subjects from the current semester
+    const semesterInfo = document.querySelector(".student-selected-semester");
+    if (semesterInfo) {
+      semesterInfo.textContent = `Analyzing subjects from ${semester} Semester`;
+    }
+
+    // Fetch course recommendations based on failed subjects
+    let recommendedPrograms = [];
+
+    try {
+      // Only fetch recommendations if there are failing subjects
+      if (weaknessSubjects.length > 0) {
+        const response = await fetch("/api/system/course-recommendations", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            studentId: student.id,
+            yearLevel: student.yearLevel,
+            semester: student.semester,
+          }),
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data.success && data.data && data.data.length > 0) {
+            // Format API recommendations for display
+            recommendedPrograms = data.data.map((rec) => {
+              // Find matching program option to get additional details
+              const programOption = programOptions.find(
+                (po) => po.program.toLowerCase() === rec.program.toLowerCase()
+              ) || {
+                description: "Program focused on different skill sets.",
+                subjects: [],
+                careers: [],
+                forStrengths: [],
+              };
+
+              return {
+                program: rec.program,
+                description: programOption.description,
+                subjects: programOption.subjects,
+                careers: programOption.careers,
+                matchScore: rec.matchScore,
+                reason: rec.reasons.join(" "),
+                failedSubjects: rec.failedSubjects,
+              };
+            });
+          }
+        }
+      }
+
+      // If no recommendations from API, use our local recommendation function as backup
+      if (recommendedPrograms.length === 0) {
+        console.log("Using local recommendation function as fallback");
+        recommendedPrograms = generateRecommendations(
+          strengths,
+          weaknesses,
+          student.grade
+        );
+      }
+    } catch (error) {
+      console.error("Error fetching course recommendations:", error);
+      // Use local recommendation function as fallback
+      recommendedPrograms = generateRecommendations(
+        strengths,
+        weaknesses,
+        student.grade
+      );
+    }
+
+    // Update the student with real strengths, weaknesses, and recommendations
+    setCurrentStudent({
+      ...student,
+      strengths,
+      weaknesses,
+      recommendedPrograms,
+    });
   };
 
   const renderWelcomeMessage = () => (
@@ -364,9 +486,9 @@ function ShiftAdvisories() {
           </Title>
           <div className="w-16 h-1 bg-gradient-to-r from-purple-500 to-pink-500 mx-auto my-4 rounded-full"></div>
           <Paragraph className="text-gray-600 max-w-2xl mx-auto text-base">
-            This tool helps identify at-risk students and provides personalized
-            program shift recommendations based on their academic performance,
-            strengths, and weaknesses.
+            This tool helps identify at-risk students (GPA 3.5-5.0) and provides
+            personalized program shift recommendations based on their academic
+            performance, strengths, and weaknesses.
           </Paragraph>
         </div>
 
@@ -377,8 +499,10 @@ function ShiftAdvisories() {
                 Step 1: Identify
               </div>
               <div className="text-sm text-gray-600">
-                System identifies students at risk of academic failure based on
-                clustering analysis
+                System identifies students at risk of academic failure
+                <div className="font-mono bg-purple-200 text-purple-800 rounded-md px-2 py-1 mt-2 inline-block">
+                  GPA 3.5-5.0
+                </div>
               </div>
             </div>
           </div>
@@ -435,6 +559,26 @@ function ShiftAdvisories() {
 
   const renderStudentDetail = () => {
     if (!currentStudent) return null;
+
+    // If still loading subjects, show a loading state
+    if (subjectLoading) {
+      return (
+        <div className="mt-6">
+          <Card className="shadow-md border-0">
+            <div className="flex justify-center items-center h-64">
+              <Spin size="large" tip="Loading student data..." />
+            </div>
+          </Card>
+        </div>
+      );
+    }
+
+    // Group subjects by performance level (if we have subjects)
+    const strengthSubjects = studentSubjects.filter((s) => s.grade < 1.7);
+    const weaknessSubjects = studentSubjects.filter((s) => s.grade > 3.0);
+    const averageSubjects = studentSubjects.filter(
+      (s) => s.grade >= 1.7 && s.grade <= 3.0
+    );
 
     return (
       <div className="mt-6">
@@ -518,43 +662,80 @@ function ShiftAdvisories() {
               </div>
 
               <div className="mt-4 bg-gray-50 p-4 rounded-lg">
-                <Title level={5}>Academic Profile</Title>
-                <div className="mb-3">
-                  <div className="font-medium text-green-600 mb-1">
-                    Strengths:
-                  </div>
-                  <div>
-                    {currentStudent.strengths.length > 0 ? (
-                      currentStudent.strengths.map((strength, index) => (
-                        <Tag color="green" key={index} className="mb-1">
-                          {strength}
-                        </Tag>
-                      ))
-                    ) : (
-                      <Text type="secondary">
-                        No significant strengths identified
-                      </Text>
-                    )}
-                  </div>
+                <div className="flex justify-between items-center mb-2">
+                  <Title level={5} className="m-0">
+                    Academic Performance
+                  </Title>
+                  <Tag color="purple" className="student-selected-semester">
+                    {semester} Semester Only
+                  </Tag>
                 </div>
-                <div>
-                  <div className="font-medium text-red-600 mb-1">
-                    Areas for Improvement:
-                  </div>
-                  <div>
-                    {currentStudent.weaknesses.length > 0 ? (
-                      currentStudent.weaknesses.map((weakness, index) => (
-                        <Tag color="red" key={index} className="mb-1">
-                          {weakness}
-                        </Tag>
-                      ))
-                    ) : (
-                      <Text type="secondary">
-                        No significant weaknesses identified
-                      </Text>
-                    )}
-                  </div>
-                </div>
+
+                {studentSubjects.length > 0 ? (
+                  <>
+                    <div className="mb-3">
+                      <div className="font-medium text-green-600 mb-1">
+                        Exceptional Subjects (Grade below 1.7):
+                      </div>
+                      <div>
+                        {strengthSubjects.length > 0 ? (
+                          strengthSubjects.map((subject, index) => (
+                            <Tag color="green" key={index} className="mb-1">
+                              {subject.name} ({subject.grade.toFixed(1)})
+                            </Tag>
+                          ))
+                        ) : (
+                          <Text type="secondary">
+                            No exceptional subjects identified
+                          </Text>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="mb-3">
+                      <div className="font-medium text-blue-600 mb-1">
+                        Passing Subjects (Grade 1.7-3.0):
+                      </div>
+                      <div>
+                        {averageSubjects.length > 0 ? (
+                          averageSubjects.map((subject, index) => (
+                            <Tag color="blue" key={index} className="mb-1">
+                              {subject.name} ({subject.grade.toFixed(1)})
+                            </Tag>
+                          ))
+                        ) : (
+                          <Text type="secondary">
+                            No average subjects identified
+                          </Text>
+                        )}
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="font-medium text-red-600 mb-1">
+                        Failing Subjects (Grade above 3.0):
+                      </div>
+                      <div>
+                        {weaknessSubjects.length > 0 ? (
+                          weaknessSubjects.map((subject, index) => (
+                            <Tag color="red" key={index} className="mb-1">
+                              {subject.name} ({subject.grade.toFixed(1)})
+                            </Tag>
+                          ))
+                        ) : (
+                          <Text type="secondary">
+                            No failing subjects identified
+                          </Text>
+                        )}
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <Empty
+                    image={Empty.PRESENTED_IMAGE_SIMPLE}
+                    description="No subject data available for this student"
+                  />
+                )}
               </div>
             </Col>
 
@@ -823,14 +1004,6 @@ function ShiftAdvisories() {
                         </Text>
                         <Text type="secondary" className="ml-4">
                           Year {student.yearLevel}, {student.semester} Semester
-                        </Text>
-                      </div>
-                      <div className="mt-1">
-                        <Text type="secondary">
-                          Recommended Shift:{" "}
-                          <Text strong className="text-purple-600">
-                            {student.recommendedPrograms[0]?.program || "None"}
-                          </Text>
                         </Text>
                       </div>
                     </div>
