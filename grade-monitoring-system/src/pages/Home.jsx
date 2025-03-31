@@ -1,7 +1,7 @@
 import {
-  BookOutlined,
   LineChartOutlined,
   UserOutlined,
+  WarningOutlined,
 } from "@ant-design/icons";
 import {
   Button,
@@ -16,19 +16,24 @@ import {
   Table,
   Tabs,
   Typography,
+  message,
 } from "antd";
 import axios from "axios";
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 const { Title, Paragraph } = Typography;
 const { TabPane } = Tabs;
+const { Option } = Select;
 
 function Home() {
+  const navigate = useNavigate();
   const [isLoaded, setIsLoaded] = useState(false);
   const [statistics, setStatistics] = useState({
     studentCount: 0,
     subjectCount: 0,
     gradeAverage: 0,
+    atRiskCount: 0,
   });
   const [students, setStudents] = useState([]);
   const [subjects, setSubjects] = useState([]);
@@ -36,6 +41,9 @@ function Home() {
   const [isSubjectsModalVisible, setIsSubjectsModalVisible] = useState(false);
   const [selectedYear, setSelectedYear] = useState(null);
   const [selectedSemester, setSelectedSemester] = useState(null);
+  const [schoolYears, setSchoolYears] = useState([]);
+  const [selectedSchoolYear, setSelectedSchoolYear] = useState("");
+  const [loadingAtRiskCount, setLoadingAtRiskCount] = useState(false);
 
   useEffect(() => {
     const fetchDashboardData = async () => {
@@ -88,7 +96,11 @@ function Home() {
           studentCount: studentCountResponse.data.count,
           subjectCount: subjectCountResponse.data.count,
           gradeAverage: gradeAverage,
+          atRiskCount: 0,
         });
+
+        // Fetch school years
+        fetchSchoolYears();
       } catch (err) {
         console.error("Error fetching dashboard data:", err);
       } finally {
@@ -98,6 +110,85 @@ function Home() {
 
     fetchDashboardData();
   }, []);
+
+  const fetchSchoolYears = async () => {
+    try {
+      const response = await axios.get(
+        "http://localhost:3000/api/system/school-years",
+        { withCredentials: true }
+      );
+
+      if (response.data.success) {
+        setSchoolYears(response.data.data);
+        if (response.data.data.length > 0) {
+          setSelectedSchoolYear(response.data.data[0]);
+        }
+      } else {
+        message.error("Failed to fetch school years");
+        // Fallback to default options
+        const currentYear = new Date().getFullYear();
+        const defaultOptions = [
+          `${currentYear - 1}-${currentYear}`,
+          `${currentYear}-${currentYear + 1}`,
+          `${currentYear + 1}-${currentYear + 2}`,
+        ];
+        setSchoolYears(defaultOptions);
+        setSelectedSchoolYear(defaultOptions[0]);
+      }
+    } catch (error) {
+      console.error("Error fetching school years:", error);
+      // Fallback to default options
+      const currentYear = new Date().getFullYear();
+      const defaultOptions = [
+        `${currentYear - 1}-${currentYear}`,
+        `${currentYear}-${currentYear + 1}`,
+        `${currentYear + 1}-${currentYear + 2}`,
+      ];
+      setSchoolYears(defaultOptions);
+      setSelectedSchoolYear(defaultOptions[0]);
+    }
+  };
+
+  const fetchAtRiskStudentsCount = async (schoolYear) => {
+    if (!schoolYear) return;
+
+    setLoadingAtRiskCount(true);
+    try {
+      // Use the dedicated at-risk-students-count endpoint
+      const response = await axios.post(
+        "http://localhost:3000/api/system/at-risk-students-count",
+        { schoolYear },
+        { withCredentials: true }
+      );
+
+      if (response.data.success) {
+        setStatistics((prev) => ({
+          ...prev,
+          atRiskCount: response.data.data.count,
+        }));
+      } else {
+        setStatistics((prev) => ({
+          ...prev,
+          atRiskCount: 0,
+        }));
+      }
+    } catch (error) {
+      console.error("Error fetching at-risk students count:", error);
+      message.error("Failed to fetch at-risk students count");
+      setStatistics((prev) => ({
+        ...prev,
+        atRiskCount: 0,
+      }));
+    } finally {
+      setLoadingAtRiskCount(false);
+    }
+  };
+
+  useEffect(() => {
+    if (selectedSchoolYear) {
+      fetchAtRiskStudentsCount(selectedSchoolYear);
+    }
+  }, [selectedSchoolYear]);
 
   const fetchStudents = async (yearLevel) => {
     try {
@@ -294,28 +385,48 @@ function Home() {
             >
               <Card
                 hoverable
-                className="h-full shadow-md border-t-4 border-t-[#3caea3] rounded-lg transition-all hover:transform hover:scale-[1.02]"
+                className="h-full shadow-md border-t-4 border-t-[#e74c3c] rounded-lg transition-all hover:transform hover:scale-[1.02]"
               >
+                <div className="mb-3">
+                  <div className="text-lg font-medium mb-2">School Year</div>
+                  <Select
+                    placeholder="Select School Year"
+                    value={selectedSchoolYear}
+                    onChange={setSelectedSchoolYear}
+                    style={{ width: "100%" }}
+                    disabled={loadingAtRiskCount}
+                  >
+                    {schoolYears.map((year) => (
+                      <Option key={year} value={year}>
+                        {year}
+                      </Option>
+                    ))}
+                  </Select>
+                </div>
                 <Statistic
-                  title={<span className="text-lg font-medium">Subjects</span>}
-                  value={statistics.subjectCount}
-                  prefix={<BookOutlined className="mr-2" />}
+                  title={
+                    <span className="text-lg font-medium">
+                      At-Risk Students
+                    </span>
+                  }
+                  value={loadingAtRiskCount ? "-" : statistics.atRiskCount}
+                  prefix={<WarningOutlined className="mr-2" />}
                   valueStyle={{
-                    color: "#3caea3",
+                    color: "#e74c3c",
                     fontSize: "2rem",
                     fontWeight: "bold",
                   }}
                 />
                 <Divider />
                 <Paragraph className="text-gray-600">
-                  Total subjects being monitored
+                  Students needing academic intervention
                 </Paragraph>
                 <Button
                   type="link"
-                  className="p-0 text-[#3caea3] font-medium hover:text-[#59bf8f]"
-                  onClick={() => setIsSubjectsModalVisible(true)}
+                  className="p-0 text-[#e74c3c] font-medium hover:text-[#c0392b]"
+                  onClick={() => navigate("/dashboard/at-risk")}
                 >
-                  Manage subjects →
+                  View at-risk students →
                 </Button>
               </Card>
             </div>
