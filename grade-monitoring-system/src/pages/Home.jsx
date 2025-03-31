@@ -44,6 +44,7 @@ function Home() {
   const [schoolYears, setSchoolYears] = useState([]);
   const [selectedSchoolYear, setSelectedSchoolYear] = useState("");
   const [loadingAtRiskCount, setLoadingAtRiskCount] = useState(false);
+  const [atRiskStudents, setAtRiskStudents] = useState([]);
 
   useEffect(() => {
     const fetchDashboardData = async () => {
@@ -166,11 +167,13 @@ function Home() {
           ...prev,
           atRiskCount: response.data.data.count,
         }));
+        setAtRiskStudents(response.data.data.atRiskStudents || []);
       } else {
         setStatistics((prev) => ({
           ...prev,
           atRiskCount: 0,
         }));
+        setAtRiskStudents([]);
       }
     } catch (error) {
       console.error("Error fetching at-risk students count:", error);
@@ -179,6 +182,7 @@ function Home() {
         ...prev,
         atRiskCount: 0,
       }));
+      setAtRiskStudents([]);
     } finally {
       setLoadingAtRiskCount(false);
     }
@@ -281,6 +285,16 @@ function Home() {
       key: "category",
     },
   ];
+
+  // Function to navigate to at-risk page with student data
+  const navigateToAtRiskPage = () => {
+    navigate("/dashboard/at-risk", {
+      state: {
+        atRiskStudents: atRiskStudents,
+        schoolYear: selectedSchoolYear,
+      },
+    });
+  };
 
   if (!isLoaded) {
     return (
@@ -424,7 +438,7 @@ function Home() {
                 <Button
                   type="link"
                   className="p-0 text-[#e74c3c] font-medium hover:text-[#c0392b]"
-                  onClick={() => navigate("/dashboard/at-risk")}
+                  onClick={navigateToAtRiskPage}
                 >
                   View at-risk students →
                 </Button>

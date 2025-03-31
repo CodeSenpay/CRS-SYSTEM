@@ -26,17 +26,21 @@ import {
   Typography,
 } from "antd";
 import { useEffect, useState } from "react";
+import { useLocation } from "react-router-dom";
 
 const { Title, Text, Paragraph } = Typography;
 const { Option } = Select;
 
 function AtRisk() {
+  const location = useLocation();
+  const passedData = location.state || {};
+
   const [students, setStudents] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [yearLevel, setYearLevel] = useState("");
   const [semester, setSemester] = useState("");
-  const [schoolYear, setSchoolYear] = useState("");
+  const [schoolYear, setSchoolYear] = useState(passedData.schoolYear || "");
   const [yearLevels] = useState(["1", "2", "3", "4"]);
   const [semesters] = useState(["First", "Second", "Summer"]);
   const [schoolYears, setSchoolYears] = useState([]);
@@ -47,6 +51,16 @@ function AtRisk() {
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [subjectLoading, setSubjectLoading] = useState(false);
   const [studentSubjects, setStudentSubjects] = useState([]);
+
+  // Check if we have passed data from Home page
+  useEffect(() => {
+    if (passedData.atRiskStudents && passedData.atRiskStudents.length > 0) {
+      console.log("Using at-risk student data passed from Home page");
+      setAllStudentData(passedData.atRiskStudents);
+      processAtRiskStudents(passedData.atRiskStudents);
+      setHasSearched(true);
+    }
+  }, []);
 
   // Fetch school years from the API
   useEffect(() => {
