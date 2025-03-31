@@ -1,6 +1,7 @@
 import {
   BarChartOutlined,
   BookOutlined,
+  EyeOutlined,
   SearchOutlined,
 } from "@ant-design/icons";
 import {
@@ -10,6 +11,8 @@ import {
   Col,
   Form,
   Input,
+  message,
+  Modal,
   Row,
   Select,
   Space,
@@ -17,7 +20,6 @@ import {
   Table,
   Tag,
   Typography,
-  message,
 } from "antd";
 import axios from "axios";
 import { useEffect, useState } from "react";
@@ -38,6 +40,13 @@ function ViewGrades() {
   const [schoolYear, setSchoolYear] = useState("");
   const [schoolYearOptions, setSchoolYearOptions] = useState([]);
   const [loadingSchoolYears, setLoadingSchoolYears] = useState(false);
+  const [studentsList, setStudentsList] = useState([]);
+  const [loadingStudents, setLoadingStudents] = useState(false);
+  const [selectedStudent, setSelectedStudent] = useState(null);
+  const [loadingGrades, setLoadingGrades] = useState(false);
+  const [searchPerformed, setSearchPerformed] = useState(false);
+  const [isGradesModalVisible, setIsGradesModalVisible] = useState(false);
+  const [gradesData, setGradesData] = useState([]);
 
   // Fetch school years from the API
   useEffect(() => {
@@ -80,30 +89,123 @@ function ViewGrades() {
     fetchSchoolYears();
   }, []);
 
-  const fetchStudentGrades = async (id = "") => {
-    try {
-      setLoading(true);
+  // Fetch students based on filters
+  const fetchStudentsByFilters = async () => {
+    if (!yearLevel || !semester || !schoolYear) {
+      message.warning(
+        "Please select Year Level, Semester, and School Year first"
+      );
+      return;
+    }
 
+    setLoadingStudents(true);
+    try {
+      console.log("Fetching students with filters:", {
+        yearLevel,
+        semester,
+        schoolYear,
+      });
+      const response = await axios.get(
+        "http://localhost:3000/api/system/students-by-filters",
+        {
+          params: {
+            yearLevel,
+            semester,
+            schoolYear,
+          },
+          withCredentials: true,
+        }
+      );
+
+      console.log("Students API response:", response.data);
+
+      if (response.data.status === "success") {
+        setStudentsList(response.data.data.students);
+      } else {
+        message.error(response.data.message || "Failed to fetch students");
+        setStudentsList([]);
+      }
+    } catch (error) {
+      console.error("Error fetching students:", error);
+      message.error("Failed to fetch students");
+      setStudentsList([]);
+    } finally {
+      setLoadingStudents(false);
+    }
+  };
+
+  // Fetch subjects based on filters
+  const fetchSubjects = async () => {
+    try {
+      // Build query parameters
+      const params = new URLSearchParams();
+      if (yearLevel) params.append("yearLevel", yearLevel);
+      if (semester) params.append("semester", semester);
+      if (schoolYear) params.append("schoolYear", schoolYear);
+
+      console.log("Fetching subjects with params:", {
+        yearLevel,
+        semester,
+        schoolYear,
+        url: `http://localhost:3000/api/system/get-subjects-by-year-semester?${params.toString()}`,
+      });
+
+      const response = await axios.get(
+        `http://localhost:3000/api/system/get-subjects-by-year-semester?${params.toString()}`,
+        { withCredentials: true }
+      );
+
+      console.log("Subjects API response:", response.data);
+
+      if (response.data && response.data.data) {
+        console.log("Subjects fetched:", response.data.data.length);
+        setFilteredSubjects(response.data.data);
+        return response.data.data;
+      } else {
+        console.log("No subjects returned from API");
+        setFilteredSubjects([]);
+        return [];
+      }
+    } catch (err) {
+      console.error("Error fetching subjects:", err);
+      setFilteredSubjects([]);
+      return [];
+    }
+  };
+
+  // Fetch student grades for specific student and subjects
+  const fetchStudentGrades = async (studentId, subjectCode) => {
+    setLoadingGrades(true);
+    try {
       // Using axios post request to fetch student grades
       const response = await axios.post(
-        "http://localhost:3000/api/system/student-grades",
+        "http://localhost:3000/api/system/view-student-grades",
         {
-          studentId: id,
-          schoolYear: schoolYear,
+          studentId,
+          schoolYear,
+          semester,
+          subjectCodes: subjectCode ? [subjectCode] : undefined,
         },
         { withCredentials: true }
       );
 
       // Process the response data
       const data = response.data;
-      console.log(data);
-      setStudents(Array.isArray(data) ? data : []);
+      if (data.status === "success" && Array.isArray(data.data)) {
+        setStudents(data.data);
+        return data.data;
+      } else {
+        console.log("API response for grades:", data);
+        setStudents([]);
+        return [];
+      }
     } catch (err) {
       console.error("Fetch error:", err);
-      // Set empty array instead of mock data
+      message.error("Failed to fetch student grades");
       setStudents([]);
+      return [];
     } finally {
-      setLoading(false);
+      setLoadingGrades(false);
     }
   };
 
@@ -139,34 +241,6 @@ function ViewGrades() {
     }
   };
 
-  const fetchSubjects = async () => {
-    try {
-      // Build query parameters
-      const params = new URLSearchParams();
-      if (yearLevel) params.append("yearLevel", yearLevel);
-      if (semester) params.append("semester", semester);
-      if (schoolYear) params.append("schoolYear", schoolYear);
-
-      console.log("Fetching subjects with params:", params.toString());
-
-      const response = await axios.get(
-        `http://localhost:3000/api/system/get-subjects-by-year-semester?${params.toString()}`,
-        { withCredentials: true }
-      );
-
-      if (response.data && response.data.data) {
-        console.log("Subjects fetched:", response.data.data.length);
-        setFilteredSubjects(response.data.data);
-      } else {
-        console.log("No subjects returned from API");
-        setFilteredSubjects([]);
-      }
-    } catch (err) {
-      console.error("Error fetching subjects:", err);
-      setFilteredSubjects([]);
-    }
-  };
-
   useEffect(() => {
     // Only fetch subjects on initial mount, not grades
     if (yearLevel && semester && schoolYear) {
@@ -175,15 +249,60 @@ function ViewGrades() {
   }, [yearLevel, semester, schoolYear]);
 
   const handleSearch = () => {
+    setSearchPerformed(true);
     if (studentId.trim()) {
-      fetchStudentGrades(studentId.trim());
+      fetchStudentGrades(studentId.trim(), subjectCode).then((grades) => {
+        setStudents(grades);
+      });
     } else if (yearLevel && semester && schoolYear) {
       // Only fetch all grades if required filters are selected
-      fetchAllStudentGrades();
+      fetchStudentsByFilters();
     } else {
       message.warning(
         "Please select Year Level, Semester, and School Year first"
       );
+    }
+  };
+
+  const handleViewStudentGrades = async (student) => {
+    setSelectedStudent(student);
+    // Fetch the grades but show them in a modal
+    try {
+      setLoadingGrades(true);
+      console.log("Fetching grades for student:", {
+        studentId: student.student_id,
+        schoolYear,
+        semester,
+      });
+
+      const response = await axios.post(
+        "http://localhost:3000/api/system/view-student-grades",
+        {
+          studentId: student.student_id,
+          schoolYear,
+          semester,
+        },
+        { withCredentials: true }
+      );
+
+      console.log("Student grades API response:", response.data);
+
+      const data = response.data;
+      if (data.status === "success" && Array.isArray(data.data)) {
+        setGradesData(data.data); // Store in separate state for the modal
+        setIsGradesModalVisible(true); // Show the modal
+      } else {
+        console.error("Failed API response format:", data);
+        message.error("Failed to fetch student grades");
+      }
+    } catch (err) {
+      console.error(
+        "Error fetching student grades:",
+        err.response?.data || err.message
+      );
+      message.error("Failed to fetch student grades");
+    } finally {
+      setLoadingGrades(false);
     }
   };
 
@@ -200,7 +319,9 @@ function ViewGrades() {
     setSubjectCode("");
     setSchoolYear("");
     setStudents([]);
+    setStudentsList([]);
     setFilteredSubjects([]);
+    setSearchPerformed(false);
   };
 
   const handleYearLevelChange = (value) => {
@@ -217,6 +338,53 @@ function ViewGrades() {
     setSchoolYear(value);
     setSubjectCode(""); // Reset subject when school year changes
   };
+
+  const studentColumns = [
+    {
+      title: "Student ID",
+      dataIndex: "student_id",
+      key: "student_id",
+    },
+    {
+      title: "Name",
+      key: "name",
+      render: (_, record) => (
+        <span>
+          {record.first_name}{" "}
+          {record.middle_name ? record.middle_name + " " : ""}
+          {record.last_name}
+        </span>
+      ),
+    },
+    {
+      title: "Course",
+      dataIndex: "course_code",
+      key: "course_code",
+    },
+    {
+      title: "Year Level",
+      dataIndex: "year_level",
+      key: "year_level",
+    },
+    {
+      title: "Section",
+      dataIndex: "section",
+      key: "section",
+    },
+    {
+      title: "Actions",
+      key: "actions",
+      render: (_, record) => (
+        <Button
+          type="primary"
+          icon={<EyeOutlined />}
+          onClick={() => handleViewStudentGrades(record)}
+        >
+          View Grades
+        </Button>
+      ),
+    },
+  ];
 
   const columns = [
     {
@@ -319,6 +487,30 @@ function ViewGrades() {
 
   const stats = calculateStats();
 
+  // Calculate statistics for grades data
+  const calculateModalStats = () => {
+    if (!gradesData.length) return { avg: 0, max: 0, min: 0 };
+
+    const grades = gradesData
+      .map((grade) => grade.score)
+      .filter((grade) => !isNaN(parseFloat(grade)));
+
+    if (!grades.length) return { avg: 0, max: 0, min: 0 };
+
+    const numericGrades = grades.map((grade) => parseFloat(grade));
+
+    return {
+      avg: (
+        numericGrades.reduce((sum, grade) => sum + grade, 0) /
+        numericGrades.length
+      ).toFixed(2),
+      max: Math.max(...numericGrades),
+      min: Math.min(...numericGrades),
+    };
+  };
+
+  const modalStats = calculateModalStats();
+
   return (
     <div className="p-6 max-w-6xl mx-auto">
       <Card
@@ -410,30 +602,6 @@ function ViewGrades() {
                 </Select>
               </Form.Item>
             </Col>
-            <Col xs={24} md={6}>
-              <Form.Item label="Subject" className="mb-2">
-                <Select
-                  placeholder="Select Subject"
-                  value={subjectCode}
-                  onChange={setSubjectCode}
-                  style={{ width: "100%" }}
-                  allowClear
-                  disabled={
-                    filteredSubjects.length === 0 &&
-                    (yearLevel || semester || schoolYear)
-                  }
-                >
-                  {filteredSubjects.map((subject) => (
-                    <Option
-                      key={subject.subject_code}
-                      value={subject.subject_code}
-                    >
-                      {subject.subject_code} - {subject.subject_name}
-                    </Option>
-                  ))}
-                </Select>
-              </Form.Item>
-            </Col>
             <Col xs={24}>
               <Space>
                 <Button
@@ -449,38 +617,94 @@ function ViewGrades() {
           </Row>
         </Form>
 
-        {loading && (
+        {(loading || loadingStudents) && (
           <div className="text-center py-10">
             <Spin size="large" />
-            <p className="mt-4">Loading student grades...</p>
+            <p className="mt-4">Loading...</p>
           </div>
         )}
 
-        {!loading && (
+        {!loading && !loadingStudents && searchPerformed && (
           <>
-            {students.length === 0 ? (
-              <Alert
-                message="No Data Available"
-                description={
-                  studentId
-                    ? `No grades found for student ID: ${studentId}`
-                    : "No student grades available for the selected filters."
-                }
-                type="info"
-                showIcon
-              />
+            {studentId.trim() ? (
+              // Show grades if student ID was directly searched
+              <>
+                {students.length === 0 && (
+                  <Alert
+                    message="No Data Available"
+                    description={`No grades found for student ID: ${studentId}`}
+                    type="info"
+                    showIcon
+                  />
+                )}
+                {students.length > 0 && (
+                  <div className="grades-table-container">
+                    <Table
+                      dataSource={students}
+                      columns={columns}
+                      rowKey={(record) =>
+                        `${record.student_number}-${record.subject_code}-${record.semester}-${record.year_level}`
+                      }
+                      pagination={{ pageSize: 10 }}
+                      className="shadow-sm"
+                    />
+                  </div>
+                )}
+              </>
             ) : (
-              <div className="grades-table-container">
-                <Table
-                  dataSource={students}
-                  columns={columns}
-                  rowKey={(record) =>
-                    `${record.student_number}-${record.subject_code}-${record.semester}-${record.year_level}`
-                  }
-                  pagination={{ pageSize: 10 }}
-                  className="shadow-sm"
-                />
-              </div>
+              // Show students list if no student ID was entered but filters are applied
+              <>
+                {studentsList.length === 0 &&
+                yearLevel &&
+                semester &&
+                schoolYear ? (
+                  <Alert
+                    message="No Students Found"
+                    description="No students found matching the selected filters."
+                    type="info"
+                    showIcon
+                  />
+                ) : studentsList.length > 0 ? (
+                  <div className="students-table-container">
+                    <Title level={4} className="mb-3">
+                      Students
+                    </Title>
+                    <Table
+                      dataSource={studentsList}
+                      columns={studentColumns}
+                      rowKey="student_id"
+                      pagination={{ pageSize: 10 }}
+                      className="shadow-sm"
+                    />
+                  </div>
+                ) : null}
+
+                {students.length > 0 && selectedStudent && (
+                  <div className="grades-table-container mt-6">
+                    <Title level={4} className="mb-3">
+                      Grades for {selectedStudent?.first_name}{" "}
+                      {selectedStudent?.last_name}
+                    </Title>
+                    <Table
+                      dataSource={students}
+                      columns={columns}
+                      rowKey={(record) =>
+                        `${record.student_number}-${record.subject_code}-${record.semester}-${record.year_level}`
+                      }
+                      pagination={{ pageSize: 10 }}
+                      className="shadow-sm"
+                      loading={loadingGrades}
+                    />
+                  </div>
+                )}
+
+                {loadingGrades && !students.length && (
+                  <div className="text-center mt-6 py-8">
+                    <Spin size="large" />
+                    <p className="mt-4">Loading student grades...</p>
+                  </div>
+                )}
+              </>
             )}
 
             {students.length > 0 && (
@@ -494,6 +718,10 @@ function ViewGrades() {
                         ? `Statistics for Student ID: ${studentId}${
                             schoolYear ? ` (S.Y. ${schoolYear})` : ""
                           }`
+                        : selectedStudent
+                        ? `Statistics for ${selectedStudent.first_name} ${
+                            selectedStudent.last_name
+                          }${schoolYear ? ` (S.Y. ${schoolYear})` : ""}`
                         : `Class Statistics${
                             schoolYear ? ` - S.Y. ${schoolYear}` : ""
                           }`}
@@ -520,16 +748,16 @@ function ViewGrades() {
                   </div>
 
                   <div className="stat-card p-4 border rounded-lg text-center bg-green-50">
-                    <Text type="secondary">Highest Grade</Text>
+                    <Text type="secondary">Best Grade</Text>
                     <div className="text-xl font-bold text-green-600">
-                      {stats.max}
+                      {stats.min}
                     </div>
                   </div>
 
                   <div className="stat-card p-4 border rounded-lg text-center bg-red-50">
-                    <Text type="secondary">Lowest Grade</Text>
+                    <Text type="secondary">Lowest Performance</Text>
                     <div className="text-xl font-bold text-red-600">
-                      {stats.min}
+                      {stats.max}
                     </div>
                   </div>
                 </div>
@@ -538,6 +766,100 @@ function ViewGrades() {
           </>
         )}
       </Card>
+
+      <Modal
+        title={
+          <div className="text-lg">
+            <span className="font-bold">
+              Grades for {selectedStudent?.first_name}{" "}
+              {selectedStudent?.last_name}
+            </span>
+            <div className="text-sm text-gray-500 mt-1">
+              {schoolYear ? `School Year: ${schoolYear}` : ""}
+              {semester ? `, Semester: ${semester}` : ""}
+            </div>
+          </div>
+        }
+        open={isGradesModalVisible}
+        onCancel={() => setIsGradesModalVisible(false)}
+        width="90%"
+        style={{ top: 20 }}
+        footer={[
+          <Button key="close" onClick={() => setIsGradesModalVisible(false)}>
+            Close
+          </Button>,
+        ]}
+      >
+        {loadingGrades ? (
+          <div className="text-center py-20">
+            <Spin size="large" />
+            <p className="mt-4">Loading grades...</p>
+          </div>
+        ) : gradesData.length > 0 ? (
+          <div>
+            <Table
+              dataSource={gradesData}
+              columns={columns}
+              rowKey={(record) =>
+                `${record.student_number}-${record.subject_code}-${record.semester}-${record.year_level}`
+              }
+              pagination={{ pageSize: 10 }}
+              scroll={{ x: "max-content" }}
+              className="shadow-sm"
+            />
+
+            <Card
+              className="mt-6"
+              title={
+                <div className="flex items-center">
+                  <BarChartOutlined className="mr-2 text-blue-500" />
+                  <span>Grade Statistics</span>
+                </div>
+              }
+            >
+              <div className="mb-3 text-sm text-gray-500 bg-gray-50 p-2 rounded flex justify-center">
+                <div className="mr-4">
+                  <Tag color="blue">Major Subjects</Tag>
+                  <span>Passing Grade: ≤ 2.5</span>
+                </div>
+                <div>
+                  <Tag color="green">Minor Subjects</Tag>
+                  <span>Passing Grade: ≤ 3.0</span>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="stat-card p-4 border rounded-lg text-center bg-blue-50">
+                  <Text type="secondary">Average Grade</Text>
+                  <div className="text-xl font-bold text-blue-600">
+                    {modalStats.avg}
+                  </div>
+                </div>
+
+                <div className="stat-card p-4 border rounded-lg text-center bg-green-50">
+                  <Text type="secondary">Best Grade</Text>
+                  <div className="text-xl font-bold text-green-600">
+                    {modalStats.min}
+                  </div>
+                </div>
+
+                <div className="stat-card p-4 border rounded-lg text-center bg-red-50">
+                  <Text type="secondary">Lowest Performance</Text>
+                  <div className="text-xl font-bold text-red-600">
+                    {modalStats.max}
+                  </div>
+                </div>
+              </div>
+            </Card>
+          </div>
+        ) : (
+          <Alert
+            message="No Grades Found"
+            description={`No grades found for ${selectedStudent?.first_name} ${selectedStudent?.last_name} with the selected filters.`}
+            type="info"
+            showIcon
+          />
+        )}
+      </Modal>
     </div>
   );
 }
