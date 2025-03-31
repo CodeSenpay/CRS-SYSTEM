@@ -1,8 +1,8 @@
 import {
-    ClusterOutlined,
-    HomeOutlined,
-    LaptopOutlined,
-    OrderedListOutlined,
+  ClusterOutlined,
+  HomeOutlined,
+  LaptopOutlined,
+  OrderedListOutlined,
 } from "@ant-design/icons";
 import { Menu } from "antd";
 import { useNavigate } from "react-router-dom";
@@ -44,6 +44,12 @@ const MenuList = () => {
         </Menu.Item>
         <Menu.Item key="viewgrades" onClick={() => navigate("view-grades")}>
           View Grades
+        </Menu.Item>
+        <Menu.Item
+          key="managesubjects"
+          onClick={() => navigate("manage-subjects")}
+        >
+          Manage Subjects
         </Menu.Item>
       </Menu.SubMenu>
       {/*--------------------------------------- */}

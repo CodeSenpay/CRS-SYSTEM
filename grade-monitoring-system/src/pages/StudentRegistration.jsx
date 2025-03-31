@@ -38,9 +38,14 @@ const StudentRegistration = () => {
         }
       );
 
-      setVerifyUser(response.data.user.userId);
+      // Check if the user has admin role
+      if (response.data.user && response.data.user.userId === "admin") {
+        setVerifyUser("admin");
+      } else {
+        setVerifyUser(null);
+      }
     } catch (err) {
-      setVerifyUser(undefined);
+      setVerifyUser(null);
       console.log(err.message);
     } finally {
       setLoading(false);

@@ -17,6 +17,7 @@ import {
   Table,
   Tag,
   Typography,
+  message,
 } from "antd";
 import axios from "axios";
 import { useEffect, useState } from "react";
@@ -31,23 +32,27 @@ function ViewGrades() {
   const [yearLevel, setYearLevel] = useState("");
   const [semester, setSemester] = useState("");
   const [subjectCode, setSubjectCode] = useState("");
-  const [subjects, setSubjects] = useState([]);
   const [filteredSubjects, setFilteredSubjects] = useState([]);
   const [yearLevels] = useState(["1", "2", "3", "4"]);
   const [semesters] = useState(["First", "Second", "Summer"]);
+  const [schoolYear, setSchoolYear] = useState("");
+  const schoolYearOptions = [
+    "2022-2023",
+    "2023-2024",
+    "2024-2025",
+    "2025-2026",
+  ];
 
   const fetchStudentGrades = async (id = "") => {
     try {
       setLoading(true);
 
       // Using axios post request to fetch student grades
-
-      if (!id) fetchAllStudentGrades();
-
       const response = await axios.post(
         "http://localhost:3000/api/system/student-grades",
         {
           studentId: id,
+          schoolYear: schoolYear,
         },
         { withCredentials: true }
       );
@@ -77,6 +82,7 @@ function ViewGrades() {
             yearLevel: yearLevel,
             semester: semester,
             subjectCode: subjectCode,
+            schoolYear: schoolYear,
           },
           withCredentials: true,
         }
@@ -84,6 +90,7 @@ function ViewGrades() {
       // Process the response data
       const data = response.data;
       console.log(Array.isArray(data));
+      console.log(data);
 
       setStudents(Array.isArray(data) ? data : []);
     } catch (err) {
@@ -97,87 +104,49 @@ function ViewGrades() {
 
   const fetchSubjects = async () => {
     try {
+      // Build query parameters
+      const params = new URLSearchParams();
+      if (yearLevel) params.append("yearLevel", yearLevel);
+      if (semester) params.append("semester", semester);
+      if (schoolYear) params.append("schoolYear", schoolYear);
+
+      console.log("Fetching subjects with params:", params.toString());
+
       const response = await axios.get(
-        "http://localhost:3000/api/system/all-subjects",
+        `http://localhost:3000/api/system/get-subjects-by-year-semester?${params.toString()}`,
         { withCredentials: true }
       );
 
       if (response.data && response.data.data) {
-        setSubjects(response.data.data);
-        filterSubjects(response.data.data, yearLevel, semester);
+        console.log("Subjects fetched:", response.data.data.length);
+        setFilteredSubjects(response.data.data);
+      } else {
+        console.log("No subjects returned from API");
+        setFilteredSubjects([]);
       }
     } catch (err) {
       console.error("Error fetching subjects:", err);
-    }
-  };
-
-  // Filter subjects based on year level and semester
-  const filterSubjects = (allSubjects, yearLevel, semester) => {
-    if (!yearLevel && !semester) {
-      setFilteredSubjects(allSubjects);
-      return;
-    }
-    // console.log("Year Level: " + yearLevel);
-    // console.log("Semester: " + semester);
-    // console.log("All Subjects: " + allSubjects);
-    // console.log(Array.isArray(allSubjects));
-    const filtered = Array.isArray(allSubjects)
-      ? allSubjects.filter((subject) => {
-          // Convert both to the same type (string) for comparison
-          const subjectYearLevel = String(subject.year_level);
-          const filterYearLevel = String(yearLevel);
-          const subjectSemester = String(subject.semester);
-          const filterSemester = String(semester);
-
-          const matchYearLevel =
-            !yearLevel || subjectYearLevel === filterYearLevel;
-          const matchSemester = !semester || subjectSemester === filterSemester;
-
-          console.log(subjectYearLevel, filterYearLevel);
-          console.log(subjectSemester, filterSemester);
-
-          return matchYearLevel && matchSemester;
-        })
-      : [];
-
-    setFilteredSubjects(filtered);
-
-    // If current selected subject doesn't match filters, clear it
-    if (subjectCode && !filtered.some((s) => s.subject_code === subjectCode)) {
-      setSubjectCode("");
+      setFilteredSubjects([]);
     }
   };
 
   useEffect(() => {
-    // Fetch all student grades on initial load
-    fetchAllStudentGrades();
-    fetchSubjects();
-  }, []);
-
-  // Filter subjects when year level or semester changes
-  useEffect(() => {
-    filterSubjects(subjects, yearLevel, semester);
-  }, [yearLevel, semester]);
-
-  // Refetch grades when filters change
-  useEffect(() => {
-    if (!studentId) {
-      fetchAllStudentGrades();
+    // Only fetch subjects on initial mount, not grades
+    if (yearLevel && semester && schoolYear) {
+      fetchSubjects();
     }
-  }, [yearLevel, semester, subjectCode]);
+  }, [yearLevel, semester, schoolYear]);
 
   const handleSearch = () => {
     if (studentId.trim()) {
       fetchStudentGrades(studentId.trim());
-      setYearLevel("");
-      setSemester("");
-      setSubjectCode("");
-    } else {
-      // If search field is empty, fetch all grades with filters
+    } else if (yearLevel && semester && schoolYear) {
+      // Only fetch all grades if required filters are selected
       fetchAllStudentGrades();
-      setYearLevel("");
-      setSemester("");
-      setSubjectCode("");
+    } else {
+      message.warning(
+        "Please select Year Level, Semester, and School Year first"
+      );
     }
   };
 
@@ -192,8 +161,9 @@ function ViewGrades() {
     setYearLevel("");
     setSemester("");
     setSubjectCode("");
-    setFilteredSubjects(subjects);
-    fetchAllStudentGrades();
+    setSchoolYear("");
+    setStudents([]);
+    setFilteredSubjects([]);
   };
 
   const handleYearLevelChange = (value) => {
@@ -204,6 +174,11 @@ function ViewGrades() {
   const handleSemesterChange = (value) => {
     setSemester(value);
     setSubjectCode(""); // Reset subject when semester changes
+  };
+
+  const handleSchoolYearChange = (value) => {
+    setSchoolYear(value);
+    setSubjectCode(""); // Reset subject when school year changes
   };
 
   const columns = [
@@ -228,17 +203,34 @@ function ViewGrades() {
       key: "subject_name",
     },
     {
+      title: "Subject Type",
+      dataIndex: "subject_type",
+      key: "subject_type",
+      render: (type) => (
+        <Tag color={type === "Major" ? "blue" : "green"}>
+          {type || "Unknown"}
+        </Tag>
+      ),
+    },
+    {
       title: "Grade",
       dataIndex: "score",
       key: "score",
-      render: (score) => {
+      render: (score, record) => {
         // Handle null, undefined or non-numeric values
         if (score === null || score === undefined || isNaN(parseFloat(score))) {
           return <span>-</span>;
         }
 
         const numericScore = parseFloat(score);
-        return numericScore <= 3.0 ? (
+        // Get the passing threshold based on subject type
+        const isMajorSubject = record.subject_type === "Major";
+        const passingThreshold = isMajorSubject ? 2.5 : 3.0;
+
+        // Determine if the grade is passing or failing
+        const isPassing = numericScore <= passingThreshold;
+
+        return isPassing ? (
           <Tag color="success" className="font-bold">
             {score}
           </Tag>
@@ -259,6 +251,11 @@ function ViewGrades() {
       dataIndex: "year_level",
       key: "year_level",
     },
+    {
+      title: "School Year",
+      dataIndex: "school_year",
+      key: "school_year",
+    },
   ];
 
   // Calculate statistics safely
@@ -267,18 +264,19 @@ function ViewGrades() {
 
     const grades = students
       .map((student) => student.score)
-      .filter((grade) => !isNaN(grade));
+      .filter((grade) => !isNaN(parseFloat(grade)));
 
     if (!grades.length) return { avg: 0, max: 0, min: 0 };
 
-    console.log(grades.reduce((sum, grade) => sum + grade, 0) / grades.length);
+    const numericGrades = grades.map((grade) => parseFloat(grade));
+
     return {
       avg: (
-        grades.reduce((sum, grade) => sum + parseFloat(grade), 0) /
-        grades.length
+        numericGrades.reduce((sum, grade) => sum + grade, 0) /
+        numericGrades.length
       ).toFixed(2),
-      max: Math.max(...grades),
-      min: Math.min(...grades),
+      max: Math.max(...numericGrades),
+      min: Math.min(...numericGrades),
     };
   };
 
@@ -359,6 +357,23 @@ function ViewGrades() {
               </Form.Item>
             </Col>
             <Col xs={24} md={6}>
+              <Form.Item label="School Year" className="mb-2">
+                <Select
+                  placeholder="Select School Year"
+                  value={schoolYear}
+                  onChange={handleSchoolYearChange}
+                  style={{ width: "100%" }}
+                  allowClear
+                >
+                  {schoolYearOptions.map((year) => (
+                    <Option key={year} value={year}>
+                      {year}
+                    </Option>
+                  ))}
+                </Select>
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={6}>
               <Form.Item label="Subject" className="mb-2">
                 <Select
                   placeholder="Select Subject"
@@ -367,7 +382,8 @@ function ViewGrades() {
                   style={{ width: "100%" }}
                   allowClear
                   disabled={
-                    filteredSubjects.length === 0 && (yearLevel || semester)
+                    filteredSubjects.length === 0 &&
+                    (yearLevel || semester || schoolYear)
                   }
                 >
                   {filteredSubjects.map((subject) => (
@@ -438,12 +454,26 @@ function ViewGrades() {
                     <BarChartOutlined className="mr-2 text-blue-500" />
                     <span>
                       {studentId
-                        ? `Statistics for Student ID: ${studentId}`
-                        : "Class Statistics"}
+                        ? `Statistics for Student ID: ${studentId}${
+                            schoolYear ? ` (S.Y. ${schoolYear})` : ""
+                          }`
+                        : `Class Statistics${
+                            schoolYear ? ` - S.Y. ${schoolYear}` : ""
+                          }`}
                     </span>
                   </div>
                 }
               >
+                <div className="mb-3 text-sm text-gray-500 bg-gray-50 p-2 rounded flex justify-center">
+                  <div className="mr-4">
+                    <Tag color="blue">Major Subjects</Tag>
+                    <span>Passing Grade: ≤ 2.5</span>
+                  </div>
+                  <div>
+                    <Tag color="green">Minor Subjects</Tag>
+                    <span>Passing Grade: ≤ 3.0</span>
+                  </div>
+                </div>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="stat-card p-4 border rounded-lg text-center bg-blue-50">
                     <Text type="secondary">Average Grade</Text>
@@ -455,14 +485,14 @@ function ViewGrades() {
                   <div className="stat-card p-4 border rounded-lg text-center bg-green-50">
                     <Text type="secondary">Highest Grade</Text>
                     <div className="text-xl font-bold text-green-600">
-                      {stats.min}
+                      {stats.max}
                     </div>
                   </div>
 
                   <div className="stat-card p-4 border rounded-lg text-center bg-red-50">
                     <Text type="secondary">Lowest Grade</Text>
                     <div className="text-xl font-bold text-red-600">
-                      {stats.max}
+                      {stats.min}
                     </div>
                   </div>
                 </div>

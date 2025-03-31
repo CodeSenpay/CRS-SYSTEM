@@ -27,19 +27,25 @@ function AddGrades() {
   const [selectedSubject, setSelectedSubject] = useState(null);
   const [studentData, setStudentData] = useState([]);
   const [loadingStudents, setLoadingStudents] = useState(false);
+  const [isMajorSubject, setIsMajorSubject] = useState(false);
+  const [schoolYear, setSchoolYear] = useState("2024-2025");
+  const schoolYearOptions = [
+    "2022-2023",
+    "2023-2024",
+    "2024-2025",
+    "2025-2026",
+  ];
 
   // Update semester options when year level changes
   useEffect(() => {
-    const academicYear = `2024-2025`;
-
     const options = [
       {
         value: `First`,
-        label: `1st Semester - ${academicYear}`,
+        label: `1st Semester - ${schoolYear}`,
       },
       {
         value: `Second`,
-        label: `2nd Semester - ${academicYear}`,
+        label: `2nd Semester - ${schoolYear}`,
       },
     ];
 
@@ -47,19 +53,20 @@ function AddGrades() {
     if (yearLevel === "3") {
       options.push({
         value: `Summer`,
-        label: `Summer`,
+        label: `Summer - ${schoolYear}`,
       });
     }
 
     setSemesterOptions(options);
     // Set default semester to first option
     setSemester(options[0].value);
-  }, [yearLevel]);
+  }, [yearLevel, schoolYear]);
 
   const fetchTeachingLoad = async () => {
     console.log({
       yearLevel,
       semester,
+      schoolYear,
     });
     try {
       setLoading(true);
@@ -68,6 +75,7 @@ function AddGrades() {
         {
           yearLevel,
           semester,
+          schoolYear,
         },
         {
           headers: {
@@ -101,6 +109,10 @@ function AddGrades() {
   const fetchStudentsForSubject = async (subject) => {
     setLoadingStudents(true);
     try {
+      // Determine if the subject is a major subject
+      const isMajor = subject.subject_type === "Major";
+      setIsMajorSubject(isMajor);
+
       // Call the API endpoint to fetch students for the selected subject
       const response = await axios.post(
         "http://localhost:3000/api/system/subject-students",
@@ -116,13 +128,16 @@ function AddGrades() {
       );
 
       if (response.data.success && response.data.data.length > 0) {
-        // console.log(response.data.data);
         // Transform the data to include grade state
         const studentsWithGrades = response.data.data.map((student, index) => ({
           ...student,
           key: index.toString(),
-          grade: student.score || 0,
-          gradeStatus: getGradeStatus(student.score),
+          // Set grade to null if it's 'N/A' or not available
+          grade: student.score === "N/A" ? null : student.score,
+          gradeStatus: getGradeStatus(
+            student.score === "N/A" ? null : student.score,
+            isMajor
+          ),
         }));
         console.log(studentsWithGrades);
         setStudentData(studentsWithGrades);
@@ -143,16 +158,25 @@ function AddGrades() {
   };
 
   // Function to determine if a grade is passing or failing
-  const getGradeStatus = (grade) => {
-    if (grade === null || grade === undefined) return null;
-    return parseFloat(grade) <= 3.0 ? "passed" : "failed";
+  const getGradeStatus = (grade, isMajor) => {
+    // Return null if grade is null, undefined, or 'N/A'
+    if (grade === null || grade === undefined || grade === "N/A") return null;
+
+    // Different passing thresholds for major and minor subjects
+    const passingThreshold = isMajor ? 2.5 : 3.0;
+    return parseFloat(grade) <= passingThreshold ? "passed" : "failed";
   };
 
   // Handle grade change for a student
   const handleGradeChange = (value, record) => {
     const updatedStudents = studentData.map((student) => {
       if (student.key === record.key) {
-        const gradeStatus = getGradeStatus(value);
+        // If value is null or undefined, set gradeStatus to null (Not graded)
+        const gradeStatus =
+          value === null || value === undefined
+            ? null
+            : getGradeStatus(value, isMajorSubject);
+
         return { ...student, grade: value, gradeStatus };
       }
       return student;
@@ -170,15 +194,18 @@ function AddGrades() {
     }
 
     try {
-      // Filter only students with grades
+      // Filter only students with valid grades
       const gradesData = studentData
-        .filter((student) => student.grade !== null)
+        .filter(
+          (student) => student.grade !== null && student.grade !== undefined
+        )
         .map((student) => ({
           student_number: student.student_id, // Using student_id as student_number
           subject_code: selectedSubject.subject_code,
           score: student.grade,
           semester: selectedSubject.semester,
           year: selectedSubject.year_level,
+          school_year: schoolYear,
         }));
 
       console.log(gradesData);
@@ -210,7 +237,7 @@ function AddGrades() {
           if (student.grade !== null) {
             return {
               ...student,
-              gradeStatus: getGradeStatus(student.grade),
+              gradeStatus: getGradeStatus(student.grade, isMajorSubject),
             };
           }
           return student;
@@ -263,7 +290,7 @@ function AddGrades() {
           min={1.0}
           max={5.0}
           step={0.1}
-          value={record.grade || 0}
+          value={record.grade !== null ? record.grade : undefined}
           onChange={(value) => handleGradeChange(value, record)}
           style={{ width: "100%" }}
           placeholder="Enter grade"
@@ -276,7 +303,7 @@ function AddGrades() {
       key: "gradeStatus",
       width: "15%",
       render: (status) => {
-        if (status === null) return <Tag>Not graded</Tag>;
+        if (status === null) return <Tag color="gray">Not graded</Tag>;
         return status === "passed" ? (
           <Tag color="green">PASSED</Tag>
         ) : (
@@ -313,9 +340,12 @@ function AddGrades() {
       key: "course_code",
     },
     {
-      title: "Category",
-      dataIndex: "category",
-      key: "category",
+      title: "Subject Type",
+      dataIndex: "subject_type",
+      key: "subject_type",
+      render: (text) => (
+        <Tag color={text === "Major" ? "blue" : "green"}>{text}</Tag>
+      ),
     },
     {
       title: "Semester",
@@ -364,6 +394,15 @@ function AddGrades() {
     setSemester(value);
   };
 
+  // Get the passing threshold based on subject type
+  const getPassingThresholdText = () => {
+    if (isMajorSubject) {
+      return "1.0 (Excellent) to 5.0 (Failed) - 2.5 or lower is passing";
+    } else {
+      return "1.0 (Excellent) to 5.0 (Failed) - 3.0 or lower is passing";
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-100 py-6 px-6">
       <div className="w-full">
@@ -378,7 +417,24 @@ function AddGrades() {
           }
         >
           <div className="mb-4 flex flex-wrap gap-4">
-            <div className="w-full md:w-[30%]">
+            <div className="w-full md:w-[20%]">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                School Year
+              </label>
+              <Select
+                value={schoolYear}
+                onChange={(value) => setSchoolYear(value)}
+                style={{ width: "100%" }}
+                size="large"
+              >
+                {schoolYearOptions.map((year) => (
+                  <Option key={year} value={year}>
+                    {year}
+                  </Option>
+                ))}
+              </Select>
+            </div>
+            <div className="w-full md:w-[20%]">
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Year Level
               </label>
@@ -394,7 +450,7 @@ function AddGrades() {
                 <Option value="4">4th Year</Option>
               </Select>
             </div>
-            <div className="w-full md:w-[30%]">
+            <div className="w-full md:w-[20%]">
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Semester
               </label>
@@ -447,9 +503,25 @@ function AddGrades() {
             </Title>
             <p className="text-sm text-gray-500 mt-1">
               {selectedSubject
-                ? `${selectedSubject.course_code} - Year ${selectedSubject.year_level} - ${selectedSubject.semester}`
+                ? `${selectedSubject.course_code} - Year ${selectedSubject.year_level} - ${selectedSubject.semester} - S.Y. ${schoolYear}`
                 : ""}
             </p>
+            {selectedSubject && (
+              <div className="mt-2 flex items-center">
+                <Tag
+                  color={
+                    selectedSubject.subject_type === "Major" ? "blue" : "green"
+                  }
+                >
+                  {selectedSubject.subject_type} Subject
+                </Tag>
+                <span className="ml-2 text-xs text-gray-500">
+                  (Passing grade:{" "}
+                  {selectedSubject.subject_type === "Major" ? "≤ 2.5" : "≤ 3.0"}
+                  )
+                </span>
+              </div>
+            )}
           </div>
         }
         open={studentModalVisible}
@@ -470,10 +542,14 @@ function AddGrades() {
         <div className="my-4">
           {studentData.length > 0 ? (
             <>
-              <Tooltip title="Passing grade is 3.0 or lower">
+              <Tooltip
+                title={`Passing grade is ${
+                  isMajorSubject ? "2.5" : "3.0"
+                } or lower for ${isMajorSubject ? "major" : "minor"} subjects`}
+              >
                 <div className="mb-2 text-sm text-gray-500">
-                  <span className="font-semibold">Grading System:</span> 1.0
-                  (Excellent) to 5.0 (Failed) - 3.0 or lower is passing
+                  <span className="font-semibold">Grading System:</span>{" "}
+                  {getPassingThresholdText()}
                 </div>
               </Tooltip>
               <Table

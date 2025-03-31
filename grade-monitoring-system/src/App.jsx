@@ -17,6 +17,7 @@ const StudentRegistration = lazy(() => import("./pages/StudentRegistration"));
 
 const AddGrades = lazy(() => import("./pages/input-grades/AddGrades"));
 const ViewGrade = lazy(() => import("./pages/input-grades/ViewGrades"));
+const Subjects = lazy(() => import("./components/Subjects"));
 
 const ViewCluster = lazy(() => import("./pages/clustering-result/ViewCluster"));
 const AtRisk = lazy(() => import("./pages/clustering-result/AtRisk"));
@@ -59,6 +60,7 @@ function App() {
 
               <Route path="input-grades" element={<AddGrades />} />
               <Route path="view-grades" element={<ViewGrade />} />
+              <Route path="manage-subjects" element={<Subjects />} />
               <Route path="view-cluster" element={<ViewCluster />} />
               <Route path="at-risk" element={<AtRisk />} />
               <Route

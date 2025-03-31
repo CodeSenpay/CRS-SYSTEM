@@ -2,7 +2,11 @@ import { yupResolver } from "@hookform/resolvers/yup";
 import axios from "axios";
 import { useEffect, useState } from "react";
 import Button from "react-bootstrap/Button";
+import Card from "react-bootstrap/Card";
+import Col from "react-bootstrap/Col";
+import Container from "react-bootstrap/Container";
 import Form from "react-bootstrap/Form";
+import Row from "react-bootstrap/Row";
 import { useForm } from "react-hook-form";
 import * as yup from "yup";
 import Loading from "../components/Loading";
@@ -90,83 +94,103 @@ function AddAccount() {
   }, []);
 
   return (
-    <div className="w-100">
+    <Container fluid className="py-5">
       {isLoading && <Loading />}
       {verifyUser != "admin" && (
-        <h1>Only for Admins, not accessible to employee</h1>
+        <div className="text-center py-5">
+          <h1 className="text-danger">Access Denied</h1>
+          <p className="lead">Only administrators can access this page.</p>
+        </div>
       )}
       {verifyUser === "admin" && (
-        <>
-          <h1>Add Account Page</h1>
-          <form
-            onSubmit={handleSubmit(handleAddAccount)}
-            style={{ opacity: isLoading ? 0.5 : 1 }}
-          >
-            <div className="form-group p-5 d-flex flex-column w-100 h-100 justify-content-center gap-3">
-              <Form.Floating>
-                <Form.Control
-                  id="fullname"
-                  type="text"
-                  placeholder="Fullname"
-                  {...register("user_name")}
-                  isInvalid={errors.user_name?.message}
-                />
-                <label htmlFor="fullname">Fullname</label>
-                <Form.Control.Feedback type="invalid">
-                  {errors.user_name?.message}
-                </Form.Control.Feedback>
-              </Form.Floating>
+        <Row className="justify-content-center">
+          <Col md={8} lg={6}>
+            <Card className="shadow-sm">
+              <Card.Header className="bg-primary text-white">
+                <h3 className="mb-0">Add New Employee Account</h3>
+              </Card.Header>
+              <Card.Body className="p-4">
+                <form
+                  onSubmit={handleSubmit(handleAddAccount)}
+                  style={{ opacity: isLoading ? 0.5 : 1 }}
+                >
+                  <div className="d-flex flex-column gap-4">
+                    <Form.Floating>
+                      <Form.Control
+                        id="fullname"
+                        type="text"
+                        placeholder="Fullname"
+                        className="border-2"
+                        {...register("user_name")}
+                        isInvalid={errors.user_name?.message}
+                      />
+                      <label htmlFor="fullname">Full Name</label>
+                      <Form.Control.Feedback type="invalid">
+                        {errors.user_name?.message}
+                      </Form.Control.Feedback>
+                    </Form.Floating>
 
-              <Form.Floating>
-                <Form.Control
-                  id="emailAddress"
-                  type="text"
-                  placeholder="Email Address"
-                  {...register("user_email")}
-                  isInvalid={errors.user_email?.message}
-                />
-                <label htmlFor="emailAddress">Email Address</label>
-                <Form.Control.Feedback type="invalid">
-                  {errors.user_email?.message}
-                </Form.Control.Feedback>
-              </Form.Floating>
+                    <Form.Floating>
+                      <Form.Control
+                        id="emailAddress"
+                        type="email"
+                        placeholder="Email Address"
+                        className="border-2"
+                        {...register("user_email")}
+                        isInvalid={errors.user_email?.message}
+                      />
+                      <label htmlFor="emailAddress">Email Address</label>
+                      <Form.Control.Feedback type="invalid">
+                        {errors.user_email?.message}
+                      </Form.Control.Feedback>
+                    </Form.Floating>
 
-              <Form.Floating>
-                <Form.Control
-                  id="mobileNumber"
-                  type="text"
-                  placeholder="Mobile Number"
-                  {...register("user_number")}
-                  isInvalid={errors.user_number?.message}
-                />
-                <label htmlFor="mobileNumber">Mobile Number</label>
-                <Form.Control.Feedback type="invalid">
-                  {errors.user_number?.message}
-                </Form.Control.Feedback>
-              </Form.Floating>
+                    <Form.Floating>
+                      <Form.Control
+                        id="mobileNumber"
+                        type="tel"
+                        placeholder="Mobile Number"
+                        className="border-2"
+                        {...register("user_number")}
+                        isInvalid={errors.user_number?.message}
+                      />
+                      <label htmlFor="mobileNumber">Mobile Number</label>
+                      <Form.Control.Feedback type="invalid">
+                        {errors.user_number?.message}
+                      </Form.Control.Feedback>
+                    </Form.Floating>
 
-              <Form.Floating>
-                <Form.Control
-                  id="userPassword"
-                  type="password"
-                  placeholder="Password"
-                  {...register("user_password")}
-                  isInvalid={errors.user_password?.message}
-                />
-                <label htmlFor="userPassword">Password</label>
-                <Form.Control.Feedback type="invalid">
-                  {errors.user_password?.message}
-                </Form.Control.Feedback>
-              </Form.Floating>
-              <Button type="submit" variant="primary">
-                Add Employee
-              </Button>
-            </div>
-            <div className="form-group"></div>
-          </form>
-        </>
+                    <Form.Floating>
+                      <Form.Control
+                        id="userPassword"
+                        type="password"
+                        placeholder="Password"
+                        className="border-2"
+                        {...register("user_password")}
+                        isInvalid={errors.user_password?.message}
+                      />
+                      <label htmlFor="userPassword">Password</label>
+                      <Form.Control.Feedback type="invalid">
+                        {errors.user_password?.message}
+                      </Form.Control.Feedback>
+                    </Form.Floating>
+
+                    <Button
+                      type="submit"
+                      variant="primary"
+                      size="lg"
+                      className="w-100 py-3 mt-3"
+                    >
+                      Add Employee
+                    </Button>
+                  </div>
+                </form>
+              </Card.Body>
+            </Card>
+          </Col>
+        </Row>
       )}
-    </div>
+    </Container>
   );
 }
 

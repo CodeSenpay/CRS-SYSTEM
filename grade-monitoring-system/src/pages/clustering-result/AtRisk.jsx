@@ -5,7 +5,6 @@ import {
   ExclamationCircleOutlined,
   InfoCircleOutlined,
   SearchOutlined,
-  UserSwitchOutlined,
   WarningOutlined,
 } from "@ant-design/icons";
 import {
@@ -20,7 +19,6 @@ import {
   Modal,
   Row,
   Select,
-  Space,
   Spin,
   Table,
   Tag,
@@ -38,8 +36,10 @@ function AtRisk() {
   const [error, setError] = useState(null);
   const [yearLevel, setYearLevel] = useState("");
   const [semester, setSemester] = useState("");
+  const [schoolYear, setSchoolYear] = useState("");
   const [yearLevels] = useState(["1", "2", "3", "4"]);
   const [semesters] = useState(["First", "Second", "Summer"]);
+  const [schoolYears] = useState(["2022-2023", "2023-2024", "2024-2025"]);
   const [hasSearched, setHasSearched] = useState(false);
   const [allStudentData, setAllStudentData] = useState([]);
   const [selectedStudent, setSelectedStudent] = useState(null);
@@ -48,7 +48,7 @@ function AtRisk() {
   const [studentSubjects, setStudentSubjects] = useState([]);
 
   const fetchAtRiskStudents = async () => {
-    if (!yearLevel || !semester) {
+    if (!yearLevel || !semester || !schoolYear) {
       return;
     }
 
@@ -64,6 +64,7 @@ function AtRisk() {
         body: JSON.stringify({
           yearLevel: yearLevel,
           semester: semester,
+          schoolYear: schoolYear,
         }),
       });
 
@@ -121,11 +122,22 @@ function AtRisk() {
       );
     }
 
-    // Updated: Filter to only include students with grades between 3.5-5.0 (at-risk)
-    // This matches the updated ViewCluster.jsx logic
+    // Filter to include students who meet any of the at-risk criteria:
+    // 1. Overall grade above 3.3
+    // 2. Major subjects average above 2.5
+    // 3. Minor subjects average above 3.0
     filteredData = filteredData.filter((student) => {
-      const grade = parseFloat(student.average_score || 0);
-      return grade >= 3.5; // Only consider at-risk if GPA is between 3.5-5.0
+      const overallGrade = parseFloat(student.average_score || 0);
+      const majorGrade =
+        student.major_grade !== null ? parseFloat(student.major_grade) : null;
+      const minorGrade =
+        student.minor_grade !== null ? parseFloat(student.minor_grade) : null;
+
+      return (
+        overallGrade > 3.3 ||
+        (majorGrade !== null && majorGrade > 2.5) ||
+        (minorGrade !== null && minorGrade > 3.0)
+      );
     });
 
     // Process student data into the required format for the UI
@@ -141,33 +153,63 @@ function AtRisk() {
       }
 
       // Convert grade to GPA-like value (using the average_score)
-      const gpa = parseFloat(student.average_score || 0);
+      const overallGrade = parseFloat(student.average_score || 0);
+      const majorGrade =
+        student.major_grade !== null ? parseFloat(student.major_grade) : null;
+      const minorGrade =
+        student.minor_grade !== null ? parseFloat(student.minor_grade) : null;
 
-      // Determine risk level based on updated grade thresholds
-      let riskLevel = "high";
-      // All students in this filtered list are high risk now (GPA 3.5-5.0)
-      // but we might still want to differentiate severity within that range
-      if (gpa >= 4.0) {
+      // Determine risk level based on combined risk factors
+      let riskLevel = "medium";
+      let riskReasons = [];
+
+      if (overallGrade > 3.3) {
+        riskReasons.push("Overall GPA > 3.3");
+      }
+
+      if (majorGrade !== null && majorGrade > 2.5) {
+        riskReasons.push("Major subjects > 2.5");
+      }
+
+      if (minorGrade !== null && minorGrade > 3.0) {
+        riskReasons.push("Minor subjects > 3.0");
+      }
+
+      // Assign higher risk level for more severe cases
+      if (
+        overallGrade >= 4.0 ||
+        (majorGrade !== null && majorGrade >= 4.0) ||
+        (minorGrade !== null && minorGrade >= 4.0)
+      ) {
         riskLevel = "high";
-      } else if (gpa >= 3.5) {
-        riskLevel = "medium";
       }
 
       // Get recommendation if available
-      const recommendedAction = student.recommendation
-        ? `${student.recommendation.recommended_action}. ${student.recommendation.focus_area}`
-        : "Academic counseling recommended";
+      const recommendedAction =
+        student.recommendations && student.recommendations.length > 0
+          ? student.recommendations
+              .map(
+                (rec) =>
+                  `${rec.recommended_action} for ${rec.subject_type} subjects`
+              )
+              .join(". ")
+          : student.recommendation
+          ? `${student.recommendation.recommended_action}. ${student.recommendation.focus_area}`
+          : "Academic counseling recommended";
 
       return {
         id: student.student_number || "Unknown ID",
         name:
           `${student.first_name || ""} ${student.last_name || ""}`.trim() ||
           "Unknown Name",
-        course: student.course || "Unknown Course",
+        course: student.course || "Computer Science",
         yearLevel: extractedYearLevel,
         semester: student.semester || "",
         riskLevel,
-        gpa,
+        riskReasons: riskReasons.join(", "),
+        overallGrade,
+        majorGrade,
+        minorGrade,
         recommendedAction,
         rawData: student, // Store original data for reference
       };
@@ -176,14 +218,12 @@ function AtRisk() {
     // Sort students by risk level (high to low) and then by GPA (worst first)
     processedStudents.sort((a, b) => {
       if (a.riskLevel === b.riskLevel) {
-        return b.gpa - a.gpa; // Higher GPA (worse in Philippine system) comes first
+        return b.overallGrade - a.overallGrade; // Higher GPA (worse in Philippine system) comes first
       }
 
-      // Risk level priority: high > medium > low
+      // Risk level priority: high > medium
       if (a.riskLevel === "high") return -1;
       if (b.riskLevel === "high") return 1;
-      if (a.riskLevel === "medium") return -1;
-      if (b.riskLevel === "medium") return 1;
       return 0;
     });
 
@@ -192,20 +232,15 @@ function AtRisk() {
 
   // When filters change AND both are selected, fetch data
   useEffect(() => {
-    if (yearLevel && semester) {
+    if (yearLevel && semester && schoolYear) {
       fetchAtRiskStudents();
     }
-  }, [yearLevel, semester]);
-
-  const handleSearch = () => {
-    if (yearLevel && semester) {
-      fetchAtRiskStudents();
-    }
-  };
+  }, [yearLevel, semester, schoolYear]);
 
   const handleReset = () => {
     setYearLevel("");
     setSemester("");
+    setSchoolYear("");
     setHasSearched(false);
     setStudents([]);
   };
@@ -222,6 +257,7 @@ function AtRisk() {
         body: JSON.stringify({
           studentId: studentId,
           semester: semester,
+          schoolYear: schoolYear,
         }),
       });
 
@@ -237,9 +273,14 @@ function AtRisk() {
         code: grade.subject_code,
         grade: parseFloat(grade.score) || 0,
         units: 3, // Assuming 3 units as default since API doesn't provide units
-        isPassing: parseFloat(grade.score) <= 3.0,
+        subjectType: grade.subject_type || "Unknown",
+        isPassing: grade.subject_type?.toLowerCase().includes("major")
+          ? parseFloat(grade.score) <= 2.5
+          : parseFloat(grade.score) <= 3.0,
         semester: grade.semester,
       }));
+
+      console.log("Fetched student subjects:", subjects);
 
       // Filter by the selected semester if it exists
       const filteredSubjects = semester
@@ -285,11 +326,6 @@ function AtRisk() {
       render: (text) => <Text strong>{text}</Text>,
     },
     {
-      title: "Current Program",
-      dataIndex: "course",
-      key: "course",
-    },
-    {
       title: "Year Level",
       dataIndex: "yearLevel",
       key: "yearLevel",
@@ -304,15 +340,12 @@ function AtRisk() {
       dataIndex: "riskLevel",
       key: "riskLevel",
       render: (riskLevel) => {
-        let color = "green";
-        let icon = <InfoCircleOutlined />;
+        let color = "orange";
+        let icon = <WarningOutlined />;
 
         if (riskLevel === "high") {
           color = "red";
           icon = <ExclamationCircleOutlined />;
-        } else if (riskLevel === "medium") {
-          color = "orange";
-          icon = <WarningOutlined />;
         }
 
         return (
@@ -324,52 +357,78 @@ function AtRisk() {
       filters: [
         { text: "High", value: "high" },
         { text: "Medium", value: "medium" },
-        { text: "Low", value: "low" },
       ],
       onFilter: (value, record) => record.riskLevel === value,
     },
     {
-      title: "GPA",
-      dataIndex: "gpa",
-      key: "gpa",
-      render: (gpa) => (
-        <Text
-          style={{
-            color: gpa < 2.0 ? "#52c41a" : gpa < 3.0 ? "#faad14" : "#ff4d4f",
-          }}
-        >
-          {gpa.toFixed(1)}
-        </Text>
-      ),
-      sorter: (a, b) => a.gpa - b.gpa,
-    },
-    {
-      title: "Recommended Action",
-      dataIndex: "recommendedAction",
-      key: "recommendedAction",
+      title: "Risk Factors",
+      dataIndex: "riskReasons",
+      key: "riskReasons",
       render: (text) => (
         <Tooltip title={text}>
-          <Paragraph ellipsis={{ rows: 2 }}>{text}</Paragraph>
+          <Paragraph ellipsis={{ rows: 1 }}>{text}</Paragraph>
         </Tooltip>
       ),
+    },
+    {
+      title: "Overall Grade",
+      dataIndex: "overallGrade",
+      key: "overallGrade",
+      render: (grade) => (
+        <Tag color={grade > 3.3 ? "error" : "success"}>{grade.toFixed(2)}</Tag>
+      ),
+      sorter: (a, b) => a.overallGrade - b.overallGrade,
+    },
+    {
+      title: "Major Subjects",
+      dataIndex: "majorGrade",
+      key: "majorGrade",
+      render: (grade) =>
+        grade !== null ? (
+          <Tag color={grade > 2.5 ? "error" : "success"}>
+            {grade.toFixed(2)}
+          </Tag>
+        ) : (
+          <Tag color="default">N/A</Tag>
+        ),
+      sorter: (a, b) => {
+        if (a.majorGrade === null && b.majorGrade === null) return 0;
+        if (a.majorGrade === null) return 1;
+        if (b.majorGrade === null) return -1;
+        return a.majorGrade - b.majorGrade;
+      },
+    },
+    {
+      title: "Minor Subjects",
+      dataIndex: "minorGrade",
+      key: "minorGrade",
+      render: (grade) =>
+        grade !== null ? (
+          <Tag color={grade > 3.0 ? "error" : "success"}>
+            {grade.toFixed(2)}
+          </Tag>
+        ) : (
+          <Tag color="default">N/A</Tag>
+        ),
+      sorter: (a, b) => {
+        if (a.minorGrade === null && b.minorGrade === null) return 0;
+        if (a.minorGrade === null) return 1;
+        if (b.minorGrade === null) return -1;
+        return a.minorGrade - b.minorGrade;
+      },
     },
     {
       title: "Actions",
       key: "actions",
       render: (_, record) => (
-        <Space>
-          <Button
-            type="primary"
-            icon={<BookOutlined />}
-            onClick={() => showStudentDetails(record)}
-            size="small"
-          >
-            View Subjects
-          </Button>
-          <Button icon={<UserSwitchOutlined />} size="small">
-            Advise
-          </Button>
-        </Space>
+        <Button
+          type="primary"
+          icon={<BookOutlined />}
+          onClick={() => showStudentDetails(record)}
+          size="small"
+        >
+          View Subjects
+        </Button>
       ),
     },
   ];
@@ -399,12 +458,13 @@ function AtRisk() {
 
     // Group subjects by strength and weakness criteria
     // Strengths: Only exceptional performances (below 1.7)
-    // Weaknesses: Failing grades (above 3.0)
-    // Note: Grades between 1.7 and 3.0 are passing but not exceptional
+    // Weaknesses: Check if grade exceeds passing threshold based on subject type
+    // - Major: Failing if > 2.5
+    // - Minor: Failing if > 3.0
     const strengthSubjects = studentSubjects.filter((s) => s.grade < 1.7);
-    const weaknessSubjects = studentSubjects.filter((s) => s.grade > 3.0);
+    const weaknessSubjects = studentSubjects.filter((s) => !s.isPassing);
     const averageSubjects = studentSubjects.filter(
-      (s) => s.grade >= 1.7 && s.grade <= 3.0
+      (s) => s.grade >= 1.7 && s.isPassing
     );
 
     return (
@@ -414,8 +474,10 @@ function AtRisk() {
             <div className="flex items-center justify-between">
               <div>
                 <span className="mr-2 text-lg">{selectedStudent.name}</span>
-                <Tag color={selectedStudent.gpa < 3.0 ? "orange" : "red"}>
-                  GPA: {selectedStudent.gpa.toFixed(1)}
+                <Tag
+                  color={selectedStudent.overallGrade < 3.0 ? "orange" : "red"}
+                >
+                  Overall GPA: {selectedStudent.overallGrade.toFixed(2)}
                 </Tag>
               </div>
               <Tag color="purple">{semester} Semester Only</Tag>
@@ -439,8 +501,8 @@ function AtRisk() {
           <Text strong>Performance Analysis:</Text>
           <p className="mt-1 text-gray-700">
             This student is at {selectedStudent.riskLevel} risk, with an average
-            GPA of {selectedStudent.gpa.toFixed(1)}.
-            {selectedStudent.gpa > 3.0
+            GPA of {selectedStudent.overallGrade.toFixed(2)}.
+            {selectedStudent.overallGrade > 3.0
               ? " Immediate intervention is recommended as the student is failing to meet minimum requirements."
               : " The student is currently maintaining passing grades but requires support to improve performance."}
           </p>
@@ -519,7 +581,21 @@ function AtRisk() {
                       >
                         <div className="flex justify-between w-full items-center">
                           <Tooltip title={subject.code}>
-                            <span>{subject.name}</span>
+                            <span>
+                              <Tag
+                                color={
+                                  subject.subjectType
+                                    ?.toLowerCase()
+                                    .includes("major")
+                                    ? "blue"
+                                    : "green"
+                                }
+                                style={{ marginRight: 8 }}
+                              >
+                                {subject.subjectType}
+                              </Tag>
+                              {subject.name}
+                            </span>
                           </Tooltip>
                           <div>
                             <Tag
@@ -604,7 +680,7 @@ function AtRisk() {
             <li className="mb-1">
               Review study habits and time management techniques
             </li>
-            {selectedStudent.gpa > 3.5 && (
+            {selectedStudent.overallGrade > 3.5 && (
               <li className="mb-1 text-red-600">
                 <strong>
                   Consider program shifting options if consistent improvement is
@@ -641,12 +717,12 @@ function AtRisk() {
                 <ExclamationCircleOutlined style={{ fontSize: "1.5rem" }} />
               </div>
               <div className="text-red-600 font-bold text-lg mb-2">
-                Critical Risk
+                Overall Grade Risk
               </div>
               <div className="text-sm text-gray-600">
-                Immediate intervention required
+                Overall grade requires improvement
                 <div className="font-mono bg-red-200 text-red-800 rounded-md px-2 py-1 mt-2 inline-block">
-                  GPA 4.0-5.0
+                  Overall Grade {">"} 3.3
                 </div>
               </div>
             </div>
@@ -658,12 +734,12 @@ function AtRisk() {
                 <WarningOutlined style={{ fontSize: "1.5rem" }} />
               </div>
               <div className="text-orange-600 font-bold text-lg mb-2">
-                High Risk
+                Major Subjects Risk
               </div>
               <div className="text-sm text-gray-600">
-                Close monitoring needed
+                Major subject grades below passing
                 <div className="font-mono bg-orange-200 text-orange-800 rounded-md px-2 py-1 mt-2 inline-block">
-                  GPA 3.5-3.9
+                  Major Subjects {">"} 2.5
                 </div>
               </div>
             </div>
@@ -675,12 +751,12 @@ function AtRisk() {
                 <InfoCircleOutlined style={{ fontSize: "1.5rem" }} />
               </div>
               <div className="text-yellow-600 font-bold text-lg mb-2">
-                Not Shown in At Risk Page
+                Minor Subjects Risk
               </div>
               <div className="text-sm text-gray-600">
-                "Needs Improvement" or "Good Standing" students
+                Minor subject grades below passing
                 <div className="font-mono bg-yellow-200 text-yellow-800 rounded-md px-2 py-1 mt-2 inline-block">
-                  GPA below 3.5
+                  Minor Subjects {">"} 3.0
                 </div>
               </div>
             </div>
@@ -767,8 +843,11 @@ function AtRisk() {
         </Text>
         <div className="mt-2 text-sm text-gray-500">
           <p>
-            Philippine Grading System: 1.0 (Excellent) to 5.0 (Failed) - 3.0 or
-            lower is passing
+            Students are considered at risk if they meet ANY of these criteria:
+          </p>
+          <p>
+            Overall Grade {">"} 3.3 | Major Subjects {">"} 2.5 | Minor Subjects{" "}
+            {">"} 3.0
           </p>
         </div>
       </div>
@@ -777,7 +856,24 @@ function AtRisk() {
       <Card className="mb-6">
         <Form layout="vertical">
           <Row gutter={[16, 16]}>
-            <Col xs={24} md={9}>
+            <Col xs={24} md={7}>
+              <Form.Item label="School Year" className="mb-2">
+                <Select
+                  placeholder="Select School Year"
+                  value={schoolYear}
+                  onChange={setSchoolYear}
+                  style={{ width: "100%" }}
+                  allowClear
+                >
+                  {schoolYears.map((y) => (
+                    <Option key={y} value={y}>
+                      {y}
+                    </Option>
+                  ))}
+                </Select>
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={6}>
               <Form.Item label="Year Level" className="mb-2">
                 <Select
                   placeholder="Select Year Level"
@@ -794,7 +890,7 @@ function AtRisk() {
                 </Select>
               </Form.Item>
             </Col>
-            <Col xs={24} md={9}>
+            <Col xs={24} md={6}>
               <Form.Item label="Semester" className="mb-2">
                 <Select
                   placeholder="Select Semester"
@@ -811,16 +907,7 @@ function AtRisk() {
                 </Select>
               </Form.Item>
             </Col>
-            <Col xs={24} md={6} className="flex items-end">
-              <Button
-                type="primary"
-                onClick={handleSearch}
-                disabled={!yearLevel || !semester}
-                className="mr-2"
-                icon={<SearchOutlined />}
-              >
-                Search
-              </Button>
+            <Col xs={24} md={5} className="flex items-end">
               <Button onClick={handleReset} icon={<SearchOutlined />}>
                 Reset
               </Button>

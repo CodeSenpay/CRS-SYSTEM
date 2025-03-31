@@ -24,6 +24,7 @@ import {
   Tag,
   Typography,
 } from "antd";
+import axios from "axios";
 import { useEffect, useState } from "react";
 
 const { Title, Text, Paragraph } = Typography;
@@ -37,9 +38,11 @@ function ShiftAdvisories() {
   const [currentStudent, setCurrentStudent] = useState(null);
   const [yearLevel, setYearLevel] = useState("");
   const [semester, setSemester] = useState("");
+  const [schoolYear, setSchoolYear] = useState("");
   const [hasSearched, setHasSearched] = useState(false);
   const [yearLevels] = useState(["1", "2", "3", "4"]);
   const [semesters] = useState(["First", "Second", "Summer"]);
+  const [schoolYears] = useState(["2022-2023", "2023-2024", "2024-2025"]);
   const [subjectLoading, setSubjectLoading] = useState(false);
   const [studentSubjects, setStudentSubjects] = useState([]);
 
@@ -116,7 +119,7 @@ function ShiftAdvisories() {
   ];
 
   const fetchAtRiskStudents = async () => {
-    if (!yearLevel || !semester) {
+    if (!yearLevel || !semester || !schoolYear) {
       return;
     }
 
@@ -124,31 +127,34 @@ function ShiftAdvisories() {
       setLoading(true);
       setHasSearched(true);
       // API call to get students at risk based on clustering
-      const response = await fetch("/api/system/cluster-students", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
+      console.log(
+        `[API REQUEST] Fetching at-risk students with filters: School Year: ${schoolYear}, Year Level: ${yearLevel}, Semester: ${semester}`
+      );
+
+      const response = await axios.post(
+        "http://localhost:3000/api/system/cluster-students",
+        {
           yearLevel: yearLevel,
           semester: semester,
-        }),
-      });
+          schoolYear: schoolYear,
+        }
+      );
 
-      if (!response.ok) {
-        throw new Error(
-          `Failed to fetch student data: ${response.status} ${response.statusText}`
-        );
+      console.log("[API RESPONSE] Cluster Students - Status:", response.status);
+      console.log("[API RESPONSE] Cluster Students - Full Response:", response);
+      console.log("[API RESPONSE] Cluster Students - Data:", response.data);
+
+      if (!response.data.success || !Array.isArray(response.data.data)) {
+        console.error("[API ERROR] Invalid response format:", response.data);
+        throw new Error(response.data.message || "Error fetching student data");
       }
 
-      const data = await response.json();
-
-      if (!data.success || !Array.isArray(data.data)) {
-        throw new Error(data.message || "Error fetching student data");
-      }
+      console.log(
+        `[API SUCCESS] Found ${response.data.data.length} students from API`
+      );
 
       // Process to find at-risk students using the same threshold as ViewCluster.jsx
-      const atRiskStudentsData = data.data
+      const atRiskStudentsData = response.data.data
         .filter((student) => {
           // Filter by year level
           let matchesYearLevel = false;
@@ -168,11 +174,36 @@ function ShiftAdvisories() {
           // Filter by semester
           const matchesSemester = student.semester === semester;
 
-          // Updated filter: only include students with GPA 3.5-5.0 as at-risk
-          const avgGrade = parseFloat(student.average_score || 0);
-          const isAtRisk = avgGrade >= 3.5;
+          // Updated filter: using the same criteria as AtRisk.jsx
+          // 1. Overall grade above 3.3
+          // 2. Major subjects average above 2.5
+          // 3. Minor subjects average above 3.0
+          const overallGrade = parseFloat(student.average_score || 0);
+          const majorGrade =
+            student.major_grade !== null
+              ? parseFloat(student.major_grade)
+              : null;
+          const minorGrade =
+            student.minor_grade !== null
+              ? parseFloat(student.minor_grade)
+              : null;
 
-          return matchesYearLevel && matchesSemester && isAtRisk;
+          // Student is at risk if ANY of these criteria are met
+          const isAtRisk =
+            overallGrade > 3.3 ||
+            (majorGrade !== null && majorGrade > 2.5) ||
+            (minorGrade !== null && minorGrade > 3.0);
+
+          console.log(
+            `[PROCESSING] Student ${
+              student.student_number || student.id
+            }: Overall=${overallGrade}, Major=${majorGrade}, Minor=${minorGrade}, isAtRisk=${isAtRisk}, matches=${
+              matchesYearLevel && matchesSemester && isAtRisk
+            }`
+          );
+
+          const matches = matchesYearLevel && matchesSemester && isAtRisk;
+          return matches;
         })
         .map((student) => {
           // Extract year level from course field if needed
@@ -186,7 +217,40 @@ function ShiftAdvisories() {
           }
 
           // Get student grade information
-          const avgGrade = parseFloat(student.average_score || 0);
+          const overallGrade = parseFloat(student.average_score || 0);
+          const majorGrade =
+            student.major_grade !== null
+              ? parseFloat(student.major_grade)
+              : null;
+          const minorGrade =
+            student.minor_grade !== null
+              ? parseFloat(student.minor_grade)
+              : null;
+
+          // Determine risk level based on combined risk factors
+          let riskLevel = "medium";
+          let riskReasons = [];
+
+          if (overallGrade > 3.3) {
+            riskReasons.push("Overall GPA > 3.3");
+          }
+
+          if (majorGrade !== null && majorGrade > 2.5) {
+            riskReasons.push("Major subjects > 2.5");
+          }
+
+          if (minorGrade !== null && minorGrade > 3.0) {
+            riskReasons.push("Minor subjects > 3.0");
+          }
+
+          // Assign higher risk level for more severe cases
+          if (
+            overallGrade >= 4.0 ||
+            (majorGrade !== null && majorGrade >= 4.0) ||
+            (minorGrade !== null && minorGrade >= 4.0)
+          ) {
+            riskLevel = "high";
+          }
 
           return {
             id: student.student_number || "Unknown ID",
@@ -194,10 +258,14 @@ function ShiftAdvisories() {
               `${student.first_name || ""} ${student.last_name || ""}`.trim() ||
               "Unknown Name",
             currentProgram: student.course || "Computer Science",
-            grade: avgGrade,
+            grade: overallGrade,
+            majorGrade,
+            minorGrade,
             yearLevel: extractedYearLevel,
             semester: student.semester || "",
             cluster: student.cluster || "C",
+            riskLevel,
+            riskReasons: riskReasons.join(", "),
             // We'll fetch real subject data when a student is selected
             strengths: [],
             weaknesses: [],
@@ -207,9 +275,19 @@ function ShiftAdvisories() {
           };
         });
 
+      console.log(`[FILTERED] At-risk students: ${atRiskStudentsData.length}`);
+      console.log(
+        "[FILTERED] Detailed filtered student data:",
+        atRiskStudentsData
+      );
+
       setFilteredStudents(atRiskStudentsData);
     } catch (error) {
-      console.error("Error fetching at-risk students:", error);
+      console.error("[API ERROR] Error fetching at-risk students:", error);
+      console.error(
+        "[API ERROR] Details:",
+        error.response?.data || error.message
+      );
       setError(`Unable to fetch student data. Error: ${error.message}`);
       setFilteredStudents([]);
     } finally {
@@ -221,179 +299,152 @@ function ShiftAdvisories() {
   const fetchStudentSubjects = async (studentId) => {
     setSubjectLoading(true);
     try {
-      const response = await fetch("/api/system/student-grades", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
+      console.log(
+        `[API REQUEST] Fetching grades for student ${studentId} (School Year: ${schoolYear}, Semester: ${semester})`
+      );
+
+      const response = await axios.post(
+        "http://localhost:3000/api/system/student-grades",
+        {
           studentId: studentId,
           semester: semester,
-        }),
-      });
+          schoolYear: schoolYear,
+        }
+      );
 
-      if (!response.ok) {
-        throw new Error(`Failed to fetch student grades: ${response.status}`);
-      }
-
-      const data = await response.json();
+      console.log("[API RESPONSE] Student Grades - Status:", response.status);
+      console.log("[API RESPONSE] Student Grades - Full Response:", response);
+      console.log("[API RESPONSE] Student Grades - Data:", response.data);
+      console.log(
+        `[API SUCCESS] Received ${response.data.length} subjects for student ${studentId}`
+      );
 
       // Transform the API response into our expected subject format
-      const subjects = data.map((grade) => ({
+      const subjects = response.data.map((grade) => ({
         name: grade.subject_name,
         code: grade.subject_code,
         grade: parseFloat(grade.score) || 0,
         units: 3, // Assuming 3 units as default since API doesn't provide units
-        isPassing: parseFloat(grade.score) <= 3.0,
+        subject_type: grade.subject_type || null, // Capture subject_type if available
+        isPassing: grade.subject_type?.toLowerCase().includes("major")
+          ? parseFloat(grade.score) <= 2.5
+          : parseFloat(grade.score) <= 3.0,
         semester: grade.semester,
       }));
+
+      console.log("[PROCESSING] Transformed subjects data:", subjects);
 
       // Filter by the selected semester if it exists
       const filteredSubjects = semester
         ? subjects.filter((subject) => subject.semester === semester)
         : subjects;
 
+      console.log(
+        `[PROCESSING] Filtered ${subjects.length} subjects to ${filteredSubjects.length} for semester ${semester}`
+      );
+
       // Sort by grade (best performance first)
       filteredSubjects.sort((a, b) => a.grade - b.grade);
 
+      console.log(
+        "[PROCESSED] Final filtered and sorted subjects:",
+        filteredSubjects
+      );
+
       return filteredSubjects;
     } catch (error) {
-      console.error("Error fetching student grades:", error);
+      console.error("[API ERROR] Error fetching student grades:", error);
+      console.error(
+        "[API ERROR] Details:",
+        error.response?.data || error.message
+      );
       return []; // Return empty array in case of error
     } finally {
       setSubjectLoading(false);
     }
   };
 
-  // Function to generate program recommendations based on student strengths/weaknesses
-  const generateRecommendations = (strengths, weaknesses, avgGrade) => {
-    const recommendations = [];
-
-    // Match student strengths with programs that align with those strengths
-    programOptions.forEach((program) => {
-      let matchScore = 0;
-
-      // Check for strength matches
-      program.forStrengths.forEach((strength) => {
-        if (
-          strengths.some(
-            (s) =>
-              s.toLowerCase().includes(strength.toLowerCase()) ||
-              strength.toLowerCase().includes(s.toLowerCase())
-          )
-        ) {
-          matchScore += 2;
-        }
-      });
-
-      // Check for subjects that don't match weaknesses
-      let weaknessMatch = 0;
-      program.subjects.forEach((subject) => {
-        if (
-          weaknesses.some(
-            (w) =>
-              w.toLowerCase().includes(subject.toLowerCase()) ||
-              subject.toLowerCase().includes(w.toLowerCase())
-          )
-        ) {
-          weaknessMatch += 1;
-        }
-      });
-
-      // Lower score if program focuses on student weaknesses
-      matchScore -= weaknessMatch;
-
-      // Add program if it has a positive match score
-      if (matchScore > 0) {
-        recommendations.push({
-          ...program,
-          matchScore,
-          reason: `This program aligns with your strengths in ${strengths.join(
-            ", "
-          )}${
-            weaknesses.length > 0
-              ? ` and helps you work around challenges in ${weaknesses.join(
-                  ", "
-                )}`
-              : ""
-          }.`,
-        });
-      }
-    });
-
-    // If no matches found based on strengths/weaknesses, recommend based on grade
-    if (recommendations.length === 0) {
-      if (avgGrade <= 2.5) {
-        // Better grades - more technical programs
-        recommendations.push({
-          ...programOptions[0], // Computer Science
-          matchScore: 5,
-          reason:
-            "Based on your academic performance, you have potential for more technical programs.",
-        });
-        recommendations.push({
-          ...programOptions[1], // Information Technology
-          matchScore: 4,
-          reason:
-            "Your grades show you can handle technical subjects with practical applications.",
-        });
-      } else {
-        // Lower grades - less technical programs
-        recommendations.push({
-          ...programOptions[4], // Business Administration
-          matchScore: 5,
-          reason:
-            "This program focuses on different skills that may better match your learning style.",
-        });
-        recommendations.push({
-          ...programOptions[3], // Multimedia Arts
-          matchScore: 4,
-          reason:
-            "This program offers a creative approach that might better align with your strengths.",
-        });
-      }
-    }
-
-    // Sort by match score (highest first)
-    return recommendations.sort((a, b) => b.matchScore - a.matchScore);
-  };
-
-  const handleSearch = () => {
-    if (yearLevel && semester) {
-      fetchAtRiskStudents();
-    }
-  };
-
   const handleReset = () => {
     setYearLevel("");
     setSemester("");
+    setSchoolYear("");
     setHasSearched(false);
     setFilteredStudents([]);
     setCurrentStudent(null);
     setStudentSubjects([]);
   };
 
-  // When filters change AND both are selected, fetch data
+  // When filters change AND all are selected, fetch data
   useEffect(() => {
-    if (yearLevel && semester) {
+    if (yearLevel && semester && schoolYear) {
+      console.log(
+        `Filters selected: School Year: ${schoolYear}, Year Level: ${yearLevel}, Semester: ${semester}`
+      );
       fetchAtRiskStudents();
     }
-  }, [yearLevel, semester]);
+  }, [yearLevel, semester, schoolYear]);
 
   const handleViewDetails = async (student) => {
+    console.log("Starting recommendation process for student:", student.id);
     // Fetch the student's actual grades for the selected semester
     const subjects = await fetchStudentSubjects(student.id);
     setStudentSubjects(subjects);
+    console.log("Fetched subjects:", subjects);
 
-    // Group subjects by strength and weakness criteria
-    // Strengths: Only exceptional performances (below 1.7)
-    // Weaknesses: Failing grades (above 3.0)
-    const strengthSubjects = subjects.filter((s) => s.grade < 1.7);
-    const weaknessSubjects = subjects.filter((s) => s.grade > 3.0);
+    // Group subjects by performance level based on subject type
+    const exceptionalSubjects = subjects.filter((s) => s.grade <= 1.5);
+    const failingSubjects = subjects.filter((s) => !s.isPassing);
 
-    // Extract subject names for recommendation engine
-    const strengths = strengthSubjects.map((s) => s.name);
-    const weaknesses = weaknessSubjects.map((s) => s.name);
+    console.log("Exceptional subjects:", exceptionalSubjects);
+    console.log("Failing subjects:", failingSubjects);
+
+    // Calculate major and minor subject grades if subject_type is available
+    let majorGrade = null;
+    let minorGrade = null;
+
+    // First check if subjects have subject_type property
+    const hasMajorMinorInfo = subjects.some((s) => s.subject_type);
+
+    if (hasMajorMinorInfo) {
+      const majorSubjects = subjects.filter((s) =>
+        s.subject_type?.toLowerCase().includes("major")
+      );
+      const minorSubjects = subjects.filter((s) =>
+        s.subject_type?.toLowerCase().includes("minor")
+      );
+
+      // Calculate average grades if subjects exist
+      if (majorSubjects.length > 0) {
+        majorGrade =
+          majorSubjects.reduce((sum, s) => sum + s.grade, 0) /
+          majorSubjects.length;
+        console.log(
+          `Calculated major subjects grade: ${majorGrade.toFixed(2)} from ${
+            majorSubjects.length
+          } subjects`
+        );
+      }
+
+      if (minorSubjects.length > 0) {
+        minorGrade =
+          minorSubjects.reduce((sum, s) => sum + s.grade, 0) /
+          minorSubjects.length;
+        console.log(
+          `Calculated minor subjects grade: ${minorGrade.toFixed(2)} from ${
+            minorSubjects.length
+          } subjects`
+        );
+      }
+    } else {
+      console.log("Subject type information not available in the data");
+    }
+
+    // Extract subject names for tracking
+    const strengths = exceptionalSubjects.map((s) => s.name);
+    const weaknesses = failingSubjects.map((s) => s.name);
+
+    console.log("Identified strengths:", strengths);
+    console.log("Identified weaknesses:", weaknesses);
 
     // Update UI to show that we're analyzing only subjects from the current semester
     const semesterInfo = document.querySelector(".student-selected-semester");
@@ -401,29 +452,55 @@ function ShiftAdvisories() {
       semesterInfo.textContent = `Analyzing subjects from ${semester} Semester`;
     }
 
-    // Fetch course recommendations based on failed subjects
+    // Initialize recommendations array and error state
     let recommendedPrograms = [];
+    let recommendationError = null;
 
     try {
       // Only fetch recommendations if there are failing subjects
-      if (weaknessSubjects.length > 0) {
-        const response = await fetch("/api/system/course-recommendations", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            studentId: student.id,
-            yearLevel: student.yearLevel,
-            semester: student.semester,
-          }),
-        });
+      if (failingSubjects.length > 0) {
+        console.log(
+          "[API REQUEST] Student has failing subjects. Fetching course recommendations..."
+        );
+        const requestBody = {
+          studentId: student.id,
+          yearLevel: student.yearLevel,
+          semester: student.semester,
+          schoolYear: schoolYear,
+        };
+        console.log(
+          "[API REQUEST] Course Recommendations - Request Body:",
+          requestBody
+        );
 
-        if (response.ok) {
-          const data = await response.json();
-          if (data.success && data.data && data.data.length > 0) {
+        try {
+          const response = await axios.post(
+            "http://localhost:3000/api/system/course-recommendations",
+            requestBody
+          );
+          console.log(
+            "[API RESPONSE] Course Recommendations - Status:",
+            response.status
+          );
+          console.log(
+            "[API RESPONSE] Course Recommendations - Full Response:",
+            response
+          );
+          console.log(
+            "[API RESPONSE] Course Recommendations - Data:",
+            response.data
+          );
+
+          if (
+            response.data.success &&
+            response.data.data &&
+            response.data.data.length > 0
+          ) {
+            console.log(
+              `[API SUCCESS] Found ${response.data.data.length} program recommendations`
+            );
             // Format API recommendations for display
-            recommendedPrograms = data.data.map((rec) => {
+            recommendedPrograms = response.data.data.map((rec) => {
               // Find matching program option to get additional details
               const programOption = programOptions.find(
                 (po) => po.program.toLowerCase() === rec.program.toLowerCase()
@@ -434,7 +511,7 @@ function ShiftAdvisories() {
                 forStrengths: [],
               };
 
-              return {
+              const recommendation = {
                 program: rec.program,
                 description: programOption.description,
                 subjects: programOption.subjects,
@@ -443,36 +520,63 @@ function ShiftAdvisories() {
                 reason: rec.reasons.join(" "),
                 failedSubjects: rec.failedSubjects,
               };
+              console.log(
+                `[PROCESSING] Recommendation for ${rec.program}:`,
+                recommendation
+              );
+              return recommendation;
             });
-          }
-        }
-      }
 
-      // If no recommendations from API, use our local recommendation function as backup
-      if (recommendedPrograms.length === 0) {
-        console.log("Using local recommendation function as fallback");
-        recommendedPrograms = generateRecommendations(
-          strengths,
-          weaknesses,
-          student.grade
+            console.log(
+              "[PROCESSED] Final recommendations list:",
+              recommendedPrograms
+            );
+          } else {
+            recommendationError =
+              "No recommendations available from the database for this student.";
+            console.log(
+              "[API INFO] No recommendations available in the response:",
+              response.data
+            );
+          }
+        } catch (axiosError) {
+          console.error(
+            "[API ERROR] Course recommendations request failed:",
+            axiosError
+          );
+          console.error(
+            "[API ERROR] Details:",
+            axiosError.response?.data || axiosError.message
+          );
+          recommendationError = `Failed to fetch recommendations. ${axiosError.message}`;
+        }
+      } else {
+        console.log(
+          "Student has no failing subjects. No recommendations needed."
         );
+        recommendationError =
+          "No recommendations needed as the student has no failing subjects.";
       }
     } catch (error) {
-      console.error("Error fetching course recommendations:", error);
-      // Use local recommendation function as fallback
-      recommendedPrograms = generateRecommendations(
-        strengths,
-        weaknesses,
-        student.grade
+      console.error("[API ERROR] Error in recommendation process:", error);
+      console.error(
+        "[API ERROR] Details:",
+        error.response?.data || error.message
       );
+      recommendationError = `Error fetching recommendations: ${error.message}`;
     }
+
+    console.log("Final recommendations:", recommendedPrograms);
 
     // Update the student with real strengths, weaknesses, and recommendations
     setCurrentStudent({
       ...student,
+      majorGrade,
+      minorGrade,
       strengths,
       weaknesses,
       recommendedPrograms,
+      recommendationError,
     });
   };
 
@@ -486,9 +590,9 @@ function ShiftAdvisories() {
           </Title>
           <div className="w-16 h-1 bg-gradient-to-r from-purple-500 to-pink-500 mx-auto my-4 rounded-full"></div>
           <Paragraph className="text-gray-600 max-w-2xl mx-auto text-base">
-            This tool helps identify at-risk students (GPA 3.5-5.0) and provides
-            personalized program shift recommendations based on their academic
-            performance, strengths, and weaknesses.
+            This tool helps identify at-risk students and provides personalized
+            program shift recommendations based on their academic performance,
+            strengths, and weaknesses.
           </Paragraph>
         </div>
 
@@ -501,7 +605,7 @@ function ShiftAdvisories() {
               <div className="text-sm text-gray-600">
                 System identifies students at risk of academic failure
                 <div className="font-mono bg-purple-200 text-purple-800 rounded-md px-2 py-1 mt-2 inline-block">
-                  GPA 3.5-5.0
+                  Students meeting any risk criteria
                 </div>
               </div>
             </div>
@@ -539,7 +643,21 @@ function ShiftAdvisories() {
                 <span className="font-medium">Ready to begin?</span>
               </div>
             }
-            description="Select a Year Level and Semester from the filters above to identify at-risk students."
+            description={
+              <div>
+                <p>
+                  Select School Year, Year Level and Semester from the filters
+                  above to identify at-risk students.
+                </p>
+                <p className="mt-2 text-sm text-gray-500">
+                  Students are considered at risk if they meet ANY of these
+                  criteria:
+                  <br />
+                  Overall Grade {">"} 3.3 | Major Subjects {">"} 2.5 | Minor
+                  Subjects {">"} 3.0
+                </p>
+              </div>
+            }
             type="info"
             showIcon={false}
             className="text-center shadow-sm border border-blue-200"
@@ -573,12 +691,12 @@ function ShiftAdvisories() {
       );
     }
 
-    // Group subjects by performance level (if we have subjects)
-    const strengthSubjects = studentSubjects.filter((s) => s.grade < 1.7);
-    const weaknessSubjects = studentSubjects.filter((s) => s.grade > 3.0);
-    const averageSubjects = studentSubjects.filter(
-      (s) => s.grade >= 1.7 && s.grade <= 3.0
+    // Group subjects by performance level based on subject type
+    const exceptionalSubjects = studentSubjects.filter((s) => s.grade <= 1.5);
+    const passingSubjects = studentSubjects.filter(
+      (s) => s.isPassing && s.grade > 1.5
     );
+    const failingSubjects = studentSubjects.filter((s) => !s.isPassing);
 
     return (
       <div className="mt-6">
@@ -643,6 +761,32 @@ function ShiftAdvisories() {
                       {currentStudent.grade.toFixed(2)}
                     </span>
                   </Descriptions.Item>
+                  {currentStudent.majorGrade !== null && (
+                    <Descriptions.Item label="Major Subjects">
+                      <span
+                        className={
+                          currentStudent.majorGrade > 2.5
+                            ? "text-red-500"
+                            : "text-green-500"
+                        }
+                      >
+                        {currentStudent.majorGrade.toFixed(2)}
+                      </span>
+                    </Descriptions.Item>
+                  )}
+                  {currentStudent.minorGrade !== null && (
+                    <Descriptions.Item label="Minor Subjects">
+                      <span
+                        className={
+                          currentStudent.minorGrade > 3.0
+                            ? "text-red-500"
+                            : "text-green-500"
+                        }
+                      >
+                        {currentStudent.minorGrade.toFixed(2)}
+                      </span>
+                    </Descriptions.Item>
+                  )}
                   <Descriptions.Item label="Year Level">
                     {currentStudent.yearLevel}
                   </Descriptions.Item>
@@ -675,13 +819,20 @@ function ShiftAdvisories() {
                   <>
                     <div className="mb-3">
                       <div className="font-medium text-green-600 mb-1">
-                        Exceptional Subjects (Grade below 1.7):
+                        Exceptional Subjects (1.0-1.5):
                       </div>
                       <div>
-                        {strengthSubjects.length > 0 ? (
-                          strengthSubjects.map((subject, index) => (
+                        {exceptionalSubjects.length > 0 ? (
+                          exceptionalSubjects.map((subject, index) => (
                             <Tag color="green" key={index} className="mb-1">
-                              {subject.name} ({subject.grade.toFixed(1)})
+                              <span>
+                                {subject.subject_type && (
+                                  <span className="mr-1">
+                                    [{subject.subject_type}]
+                                  </span>
+                                )}
+                                {subject.name} ({subject.grade.toFixed(1)})
+                              </span>
                             </Tag>
                           ))
                         ) : (
@@ -694,13 +845,20 @@ function ShiftAdvisories() {
 
                     <div className="mb-3">
                       <div className="font-medium text-blue-600 mb-1">
-                        Passing Subjects (Grade 1.7-3.0):
+                        Passing Subjects:
                       </div>
                       <div>
-                        {averageSubjects.length > 0 ? (
-                          averageSubjects.map((subject, index) => (
+                        {passingSubjects.length > 0 ? (
+                          passingSubjects.map((subject, index) => (
                             <Tag color="blue" key={index} className="mb-1">
-                              {subject.name} ({subject.grade.toFixed(1)})
+                              <span>
+                                {subject.subject_type && (
+                                  <span className="mr-1">
+                                    [{subject.subject_type}]
+                                  </span>
+                                )}
+                                {subject.name} ({subject.grade.toFixed(1)})
+                              </span>
                             </Tag>
                           ))
                         ) : (
@@ -713,13 +871,31 @@ function ShiftAdvisories() {
 
                     <div>
                       <div className="font-medium text-red-600 mb-1">
-                        Failing Subjects (Grade above 3.0):
+                        Failing Subjects:
                       </div>
                       <div>
-                        {weaknessSubjects.length > 0 ? (
-                          weaknessSubjects.map((subject, index) => (
+                        {failingSubjects.length > 0 ? (
+                          failingSubjects.map((subject, index) => (
                             <Tag color="red" key={index} className="mb-1">
-                              {subject.name} ({subject.grade.toFixed(1)})
+                              <span>
+                                {subject.subject_type && (
+                                  <span className="mr-1">
+                                    [{subject.subject_type}]
+                                  </span>
+                                )}
+                                {subject.name} ({subject.grade.toFixed(1)})
+                                {subject.subject_type && (
+                                  <span className="ml-1 text-xs">
+                                    (Pass:{" "}
+                                    {subject.subject_type
+                                      .toLowerCase()
+                                      .includes("major")
+                                      ? "≤2.5"
+                                      : "≤3.0"}
+                                    )
+                                  </span>
+                                )}
+                              </span>
                             </Tag>
                           ))
                         ) : (
@@ -750,68 +926,95 @@ function ShiftAdvisories() {
                 recommended:
               </Paragraph>
 
-              <Steps direction="vertical" current={-1} className="mb-6">
-                {currentStudent.recommendedPrograms.map((program, index) => (
-                  <Step
-                    key={index}
-                    title={
-                      <div className="flex items-center">
-                        <span className="font-medium">{program.program}</span>
-                        <Tag color="purple" className="ml-2">
-                          {Math.round((program.matchScore / 5) * 100)}% Match
-                        </Tag>
-                      </div>
-                    }
-                    description={
-                      <div className="mt-2">
-                        <Paragraph>{program.description}</Paragraph>
-                        <div className="mb-3">
-                          <Text strong>Key Subjects: </Text>
-                          {program.subjects.map((subject, idx) => (
-                            <Tag color="blue" key={idx} className="mb-1">
-                              {subject}
-                            </Tag>
-                          ))}
+              {currentStudent.recommendationError ? (
+                <Alert
+                  message="Recommendation Status"
+                  description={currentStudent.recommendationError}
+                  type="info"
+                  showIcon
+                  className="mb-6"
+                />
+              ) : currentStudent.recommendedPrograms.length === 0 ? (
+                <Alert
+                  message="No Recommendations Available"
+                  description="No program shift recommendations are available for this student at this time."
+                  type="info"
+                  showIcon
+                  className="mb-6"
+                />
+              ) : (
+                <Steps direction="vertical" current={-1} className="mb-6">
+                  {currentStudent.recommendedPrograms.map((program, index) => (
+                    <Step
+                      key={index}
+                      title={
+                        <div className="flex items-center">
+                          <span className="font-medium">{program.program}</span>
+                          <Tag color="purple" className="ml-2">
+                            {Math.round((program.matchScore / 5) * 100)}% Match
+                          </Tag>
                         </div>
-                        <div className="mb-3">
-                          <Text strong>Career Paths: </Text>
-                          {program.careers.map((career, idx) => (
-                            <Tag color="cyan" key={idx} className="mb-1">
-                              {career}
-                            </Tag>
-                          ))}
+                      }
+                      description={
+                        <div className="mt-2">
+                          <Paragraph>{program.description}</Paragraph>
+                          <div className="mb-3">
+                            <Text strong>Key Subjects: </Text>
+                            {program.subjects.map((subject, idx) => (
+                              <Tag color="blue" key={idx} className="mb-1">
+                                {subject}
+                              </Tag>
+                            ))}
+                          </div>
+                          <div className="mb-3">
+                            <Text strong>Career Paths: </Text>
+                            {program.careers.map((career, idx) => (
+                              <Tag color="cyan" key={idx} className="mb-1">
+                                {career}
+                              </Tag>
+                            ))}
+                          </div>
+                          <Alert
+                            message={program.reason}
+                            type="info"
+                            showIcon
+                          />
                         </div>
-                        <Alert message={program.reason} type="info" showIcon />
-                      </div>
-                    }
-                  />
-                ))}
-              </Steps>
+                      }
+                    />
+                  ))}
+                </Steps>
+              )}
 
               <Divider />
 
-              <Alert
-                type="warning"
-                showIcon
-                message="Next Steps"
-                description={
-                  <div>
-                    <p>For this student, we recommend:</p>
-                    <ol className="list-decimal ml-5 mt-2">
-                      <li>Schedule an academic counseling session</li>
-                      <li>Discuss program shift options with the student</li>
-                      <li>
-                        Connect with the department chair of the recommended
-                        programs
-                      </li>
-                      <li>
-                        Create a transition plan if the student decides to shift
-                        programs
-                      </li>
-                    </ol>
-                  </div>
-                }
-              />
+              {!currentStudent.recommendationError &&
+                currentStudent.recommendedPrograms.length > 0 && (
+                  <Alert
+                    type="warning"
+                    showIcon
+                    message="Next Steps"
+                    description={
+                      <div>
+                        <p>For this student, we recommend:</p>
+                        <ol className="list-decimal ml-5 mt-2">
+                          <li>Schedule an academic counseling session</li>
+                          <li>
+                            Discuss program shift options with the student
+                          </li>
+                          <li>
+                            Connect with the department chair of the recommended
+                            programs
+                          </li>
+                          <li>
+                            Create a transition plan if the student decides to
+                            shift programs
+                          </li>
+                        </ol>
+                      </div>
+                    }
+                  />
+                )}
             </Col>
           </Row>
         </Card>
@@ -871,7 +1074,24 @@ function ShiftAdvisories() {
       <Card className="mb-6">
         <Form layout="vertical">
           <Row gutter={[16, 16]}>
-            <Col xs={24} md={9}>
+            <Col xs={24} md={7}>
+              <Form.Item label="School Year" className="mb-2">
+                <Select
+                  placeholder="Select School Year"
+                  value={schoolYear}
+                  onChange={setSchoolYear}
+                  style={{ width: "100%" }}
+                  allowClear
+                >
+                  {schoolYears.map((y) => (
+                    <Option key={y} value={y}>
+                      {y}
+                    </Option>
+                  ))}
+                </Select>
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={6}>
               <Form.Item label="Year Level" className="mb-2">
                 <Select
                   placeholder="Select Year Level"
@@ -888,7 +1108,7 @@ function ShiftAdvisories() {
                 </Select>
               </Form.Item>
             </Col>
-            <Col xs={24} md={9}>
+            <Col xs={24} md={6}>
               <Form.Item label="Semester" className="mb-2">
                 <Select
                   placeholder="Select Semester"
@@ -905,16 +1125,7 @@ function ShiftAdvisories() {
                 </Select>
               </Form.Item>
             </Col>
-            <Col xs={24} md={6} className="flex items-end">
-              <Button
-                type="primary"
-                onClick={handleSearch}
-                disabled={!yearLevel || !semester}
-                className="mr-2"
-                icon={<SearchOutlined />}
-              >
-                Search
-              </Button>
+            <Col xs={24} md={5} className="flex items-end">
               <Button onClick={handleReset} icon={<SearchOutlined />}>
                 Reset
               </Button>
@@ -987,12 +1198,16 @@ function ShiftAdvisories() {
                       >
                         GPA: {student.grade.toFixed(2)}
                       </Tag>
-                      <Tag
-                        color={student.cluster === "C" ? "red" : "orange"}
-                        className="ml-2"
-                      >
-                        {student.cluster === "C" ? "Low" : "Medium"} Performance
-                      </Tag>
+                      {student.riskLevel && (
+                        <Tag
+                          color={
+                            student.riskLevel === "high" ? "red" : "orange"
+                          }
+                          className="ml-2"
+                        >
+                          {student.riskLevel.toUpperCase()} Risk
+                        </Tag>
+                      )}
                     </div>
                   }
                   description={
@@ -1006,6 +1221,13 @@ function ShiftAdvisories() {
                           Year {student.yearLevel}, {student.semester} Semester
                         </Text>
                       </div>
+                      {student.riskReasons && (
+                        <div className="mt-1">
+                          <Text type="danger">
+                            Risk Factors: {student.riskReasons}
+                          </Text>
+                        </div>
+                      )}
                     </div>
                   }
                 />
