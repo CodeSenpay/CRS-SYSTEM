@@ -39,13 +39,62 @@ function AtRisk() {
   const [schoolYear, setSchoolYear] = useState("");
   const [yearLevels] = useState(["1", "2", "3", "4"]);
   const [semesters] = useState(["First", "Second", "Summer"]);
-  const [schoolYears] = useState(["2022-2023", "2023-2024", "2024-2025"]);
+  const [schoolYears, setSchoolYears] = useState([]);
+  const [loadingSchoolYears, setLoadingSchoolYears] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
   const [allStudentData, setAllStudentData] = useState([]);
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [subjectLoading, setSubjectLoading] = useState(false);
   const [studentSubjects, setStudentSubjects] = useState([]);
+
+  // Fetch school years from the API
+  useEffect(() => {
+    const fetchSchoolYears = async () => {
+      setLoadingSchoolYears(true);
+      try {
+        const response = await fetch("/api/system/school-years", {
+          method: "GET",
+          credentials: "include",
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data.success) {
+            setSchoolYears(data.data);
+          } else {
+            console.error("Failed to fetch school years:", data.message);
+            // Fallback to default options
+            const currentYear = new Date().getFullYear();
+            const defaultOptions = [
+              `${currentYear - 1}-${currentYear}`,
+              `${currentYear}-${currentYear + 1}`,
+              `${currentYear + 1}-${currentYear + 2}`,
+            ];
+            setSchoolYears(defaultOptions);
+          }
+        } else {
+          throw new Error(
+            `Failed to fetch school years: ${response.status} ${response.statusText}`
+          );
+        }
+      } catch (error) {
+        console.error("Error fetching school years:", error);
+        // Fallback to default options
+        const currentYear = new Date().getFullYear();
+        const defaultOptions = [
+          `${currentYear - 1}-${currentYear}`,
+          `${currentYear}-${currentYear + 1}`,
+          `${currentYear + 1}-${currentYear + 2}`,
+        ];
+        setSchoolYears(defaultOptions);
+      } finally {
+        setLoadingSchoolYears(false);
+      }
+    };
+
+    fetchSchoolYears();
+  }, []);
 
   const fetchAtRiskStudents = async () => {
     if (!yearLevel || !semester || !schoolYear) {

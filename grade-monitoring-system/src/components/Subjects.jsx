@@ -52,15 +52,45 @@ const Subjects = () => {
     }
   };
 
-  // Generate school years (current year - 5 to current year + 1)
+  // Fetch school years from the API
   useEffect(() => {
-    const currentYear = new Date().getFullYear();
-    const years = [];
-    for (let year = currentYear - 5; year <= currentYear + 1; year++) {
-      years.push(`${year}-${year + 1}`);
-    }
-    setSchoolYears(years);
-    setSelectedSchoolYear(years[5]); // Default to current year
+    const fetchSchoolYears = async () => {
+      try {
+        const response = await axios.get(
+          "http://localhost:3000/api/system/school-years",
+          { withCredentials: true }
+        );
+
+        if (response.data.success) {
+          setSchoolYears(response.data.data);
+          if (response.data.data.length > 0) {
+            setSelectedSchoolYear(response.data.data[0]);
+          }
+        } else {
+          message.error("Failed to fetch school years");
+          // Generate fallback school years
+          const currentYear = new Date().getFullYear();
+          const years = [];
+          for (let year = currentYear - 5; year <= currentYear + 1; year++) {
+            years.push(`${year}-${year + 1}`);
+          }
+          setSchoolYears(years);
+          setSelectedSchoolYear(years[5]); // Default to current year
+        }
+      } catch (error) {
+        console.error("Error fetching school years:", error);
+        // Generate fallback school years
+        const currentYear = new Date().getFullYear();
+        const years = [];
+        for (let year = currentYear - 5; year <= currentYear + 1; year++) {
+          years.push(`${year}-${year + 1}`);
+        }
+        setSchoolYears(years);
+        setSelectedSchoolYear(years[5]); // Default to current year
+      }
+    };
+
+    fetchSchoolYears();
   }, []);
 
   // Fetch subjects when filters change

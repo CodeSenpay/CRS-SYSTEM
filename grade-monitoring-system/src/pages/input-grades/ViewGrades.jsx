@@ -36,12 +36,49 @@ function ViewGrades() {
   const [yearLevels] = useState(["1", "2", "3", "4"]);
   const [semesters] = useState(["First", "Second", "Summer"]);
   const [schoolYear, setSchoolYear] = useState("");
-  const schoolYearOptions = [
-    "2022-2023",
-    "2023-2024",
-    "2024-2025",
-    "2025-2026",
-  ];
+  const [schoolYearOptions, setSchoolYearOptions] = useState([]);
+  const [loadingSchoolYears, setLoadingSchoolYears] = useState(false);
+
+  // Fetch school years from the API
+  useEffect(() => {
+    const fetchSchoolYears = async () => {
+      setLoadingSchoolYears(true);
+      try {
+        const response = await axios.get(
+          "http://localhost:3000/api/system/school-years",
+          { withCredentials: true }
+        );
+
+        if (response.data.success) {
+          setSchoolYearOptions(response.data.data);
+        } else {
+          message.error("Failed to fetch school years");
+          // Fallback to default options
+          const currentYear = new Date().getFullYear();
+          const defaultOptions = [
+            `${currentYear - 1}-${currentYear}`,
+            `${currentYear}-${currentYear + 1}`,
+            `${currentYear + 1}-${currentYear + 2}`,
+          ];
+          setSchoolYearOptions(defaultOptions);
+        }
+      } catch (error) {
+        console.error("Error fetching school years:", error);
+        // Fallback to default options
+        const currentYear = new Date().getFullYear();
+        const defaultOptions = [
+          `${currentYear - 1}-${currentYear}`,
+          `${currentYear}-${currentYear + 1}`,
+          `${currentYear + 1}-${currentYear + 2}`,
+        ];
+        setSchoolYearOptions(defaultOptions);
+      } finally {
+        setLoadingSchoolYears(false);
+      }
+    };
+
+    fetchSchoolYears();
+  }, []);
 
   const fetchStudentGrades = async (id = "") => {
     try {

@@ -42,9 +42,51 @@ function ShiftAdvisories() {
   const [hasSearched, setHasSearched] = useState(false);
   const [yearLevels] = useState(["1", "2", "3", "4"]);
   const [semesters] = useState(["First", "Second", "Summer"]);
-  const [schoolYears] = useState(["2022-2023", "2023-2024", "2024-2025"]);
+  const [schoolYears, setSchoolYears] = useState([]);
+  const [loadingSchoolYears, setLoadingSchoolYears] = useState(false);
   const [subjectLoading, setSubjectLoading] = useState(false);
   const [studentSubjects, setStudentSubjects] = useState([]);
+
+  // Fetch school years from the API
+  useEffect(() => {
+    const fetchSchoolYears = async () => {
+      setLoadingSchoolYears(true);
+      try {
+        const response = await axios.get(
+          "http://localhost:3000/api/system/school-years",
+          { withCredentials: true }
+        );
+
+        if (response.data.success) {
+          setSchoolYears(response.data.data);
+        } else {
+          console.error("Failed to fetch school years:", response.data.message);
+          // Fallback to default options
+          const currentYear = new Date().getFullYear();
+          const defaultOptions = [
+            `${currentYear - 1}-${currentYear}`,
+            `${currentYear}-${currentYear + 1}`,
+            `${currentYear + 1}-${currentYear + 2}`,
+          ];
+          setSchoolYears(defaultOptions);
+        }
+      } catch (error) {
+        console.error("Error fetching school years:", error);
+        // Fallback to default options
+        const currentYear = new Date().getFullYear();
+        const defaultOptions = [
+          `${currentYear - 1}-${currentYear}`,
+          `${currentYear}-${currentYear + 1}`,
+          `${currentYear + 1}-${currentYear + 2}`,
+        ];
+        setSchoolYears(defaultOptions);
+      } finally {
+        setLoadingSchoolYears(false);
+      }
+    };
+
+    fetchSchoolYears();
+  }, []);
 
   // Program options that can be recommended
   const programOptions = [

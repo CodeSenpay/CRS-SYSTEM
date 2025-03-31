@@ -28,13 +28,56 @@ function AddGrades() {
   const [studentData, setStudentData] = useState([]);
   const [loadingStudents, setLoadingStudents] = useState(false);
   const [isMajorSubject, setIsMajorSubject] = useState(false);
-  const [schoolYear, setSchoolYear] = useState("2024-2025");
-  const schoolYearOptions = [
-    "2022-2023",
-    "2023-2024",
-    "2024-2025",
-    "2025-2026",
-  ];
+  const [schoolYear, setSchoolYear] = useState("");
+  const [schoolYearOptions, setSchoolYearOptions] = useState([]);
+  const [loadingSchoolYears, setLoadingSchoolYears] = useState(false);
+
+  // Fetch school years from the API
+  useEffect(() => {
+    const fetchSchoolYears = async () => {
+      setLoadingSchoolYears(true);
+      try {
+        const response = await axios.get(
+          "http://localhost:3000/api/system/school-years",
+          { withCredentials: true }
+        );
+
+        if (response.data.success) {
+          setSchoolYearOptions(response.data.data);
+          // Set default to the first school year
+          if (response.data.data.length > 0) {
+            setSchoolYear(response.data.data[0]);
+          }
+        } else {
+          message.error("Failed to fetch school years");
+          // Fallback to default options
+          const currentYear = new Date().getFullYear();
+          const defaultOptions = [
+            `${currentYear - 1}-${currentYear}`,
+            `${currentYear}-${currentYear + 1}`,
+            `${currentYear + 1}-${currentYear + 2}`,
+          ];
+          setSchoolYearOptions(defaultOptions);
+          setSchoolYear(defaultOptions[0]);
+        }
+      } catch (error) {
+        console.error("Error fetching school years:", error);
+        // Fallback to default options
+        const currentYear = new Date().getFullYear();
+        const defaultOptions = [
+          `${currentYear - 1}-${currentYear}`,
+          `${currentYear}-${currentYear + 1}`,
+          `${currentYear + 1}-${currentYear + 2}`,
+        ];
+        setSchoolYearOptions(defaultOptions);
+        setSchoolYear(defaultOptions[0]);
+      } finally {
+        setLoadingSchoolYears(false);
+      }
+    };
+
+    fetchSchoolYears();
+  }, []);
 
   // Update semester options when year level changes
   useEffect(() => {
