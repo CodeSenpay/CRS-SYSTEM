@@ -1,3 +1,4 @@
+import { ClusterOutlined } from "@ant-design/icons";
 import SyncLoader from "react-spinners/SyncLoader";
 function Loading({ loading }) {
   const loaderStyle = {
@@ -18,12 +19,8 @@ function Loading({ loading }) {
 
   return (
     <div style={loaderStyle}>
-      <img
-        src="../../assets/images/LogoPNG.png"
-        style={{ width: "80px" }}
-        alt=""
-      />
-      <SyncLoader color={"#FFBF00"} loading={loading} size={15} />
+      <ClusterOutlined style={{ fontSize: "40px", color: "#3b8132" }} />
+      <SyncLoader color={"#3b8132"} loading={loading} size={15} />
     </div>
   );
 }
