@@ -1,0 +1,11 @@
+[33mcommit 39ed454928b02b3200a29c4e1081b98a378f5361[m[33m ([m[1;36mHEAD -> [m[1;32mmain[m[33m)[m
+Author: Robert Mayo Elumba <robertmayo.elumba@gmail.com>
+Date:   Mon Dec 30 00:48:54 2024 +0800
+
+    Delete GenerateTotpService
+
+[33mcommit cd978bd5485f58ce08646ea44bc199eb6f9b358a[m
+Author: Robert Mayo Elumba <robertmayo.elumba@gmail.com>
+Date:   Thu Nov 21 13:53:55 2024 +0800
+
+    first commit
