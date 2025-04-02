@@ -449,14 +449,24 @@ function ViewCluster() {
         title: "Status",
         key: "status",
         render: (_, record) => {
+          // Check if major or minor grades are failed
+          const hasFailedMajor =
+            record.majorGrade !== null && record.majorGrade > 2.5;
+          const hasFailedMinor =
+            record.minorGrade !== null && record.minorGrade > 3.0;
+
+          // If either major or minor is failed, show "Needs Improvement"
+          const needsImprovement =
+            record.isAtRisk || hasFailedMajor || hasFailedMinor;
+
           return (
             <Tag
-              color={record.isAtRisk ? "red" : "green"}
+              color={needsImprovement ? "red" : "green"}
               icon={
-                record.isAtRisk ? <WarningOutlined /> : <CheckCircleOutlined />
+                needsImprovement ? <WarningOutlined /> : <CheckCircleOutlined />
               }
             >
-              {record.isAtRisk ? "Needs Improvement" : "Good Standing"}
+              {needsImprovement ? "Needs Improvement" : "Good Standing"}
             </Tag>
           );
         },
@@ -469,9 +479,18 @@ function ViewCluster() {
             (record.recommendations && record.recommendations.length > 0) ||
             record.recommendation;
 
-          // Only show recommendation button for students who need it
-          // High performers (below 2.6) don't need recommendations
-          if (hasRecommendations && record.grade >= 2.6) {
+          // Check if major or minor grades are failed
+          const hasFailedMajor =
+            record.majorGrade !== null && record.majorGrade > 2.5;
+          const hasFailedMinor =
+            record.minorGrade !== null && record.minorGrade > 3.0;
+
+          // If either major or minor is failed, show "Needs Improvement"
+          const needsImprovement =
+            record.isAtRisk || hasFailedMajor || hasFailedMinor;
+
+          // Show recommendation button if student needs improvement and has recommendations
+          if (hasRecommendations && needsImprovement) {
             return (
               <Button
                 type="primary"
