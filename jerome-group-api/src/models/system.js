@@ -199,7 +199,7 @@ class SystemModel {
       const query = `
         INSERT INTO students (
           student_id, first_name, last_name, middle_name, gender, birth_date,
-          email, phone_number, address, course, year_level, semester, section,
+          email, phone_number, address, course_code, year_level, semester, section,
           emergency_contact_name, emergency_contact_number
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `;
@@ -214,7 +214,7 @@ class SystemModel {
         newStudent.email ?? "",
         newStudent.phoneNumber ?? "",
         newStudent.address ?? "",
-        newStudent.course ?? "",
+        newStudent.course_code ?? "",
         newStudent.yearLevel ?? "",
         newStudent.semester ?? "",
         newStudent.section ?? "",
@@ -534,10 +534,10 @@ class SystemModel {
     }
   }
 
-  async getStudentsBySubjectCode(subjectCode) {
+  async getStudentsBySubjectCode(subjectCode, schoolYear, yearLevel, semester) {
     try {
-      // SQL query with prepared statement
-      const query = `
+      // Build the query starting with basic join
+      let query = `
     SELECT 
     e.subject_code,
     s.subject_name,
@@ -554,11 +554,32 @@ class SystemModel {
     JOIN subjects s ON e.subject_code = s.subject_code
     JOIN students st ON e.student_id = st.student_id
     LEFT JOIN grades g ON e.student_id = g.student_number AND e.subject_code = g.subject_code
-    WHERE e.subject_code = ?;
-      `;
+    WHERE e.subject_code = ?`;
+
+      // Parameters array starting with subject code
+      const params = [subjectCode];
+
+      // Add optional filters if provided
+      if (schoolYear) {
+        query += " AND s.school_year = ?";
+        params.push(schoolYear);
+      }
+
+      if (yearLevel) {
+        query += " AND st.year_level = ?";
+        params.push(yearLevel);
+      }
+
+      if (semester) {
+        query += " AND st.semester = ?";
+        params.push(semester);
+      }
+
+      // Add order by clause
+      query += " ORDER BY st.last_name, st.first_name";
 
       // Execute the query with parameters
-      const [results] = await pool.execute(query, [subjectCode]);
+      const [results] = await pool.execute(query, params);
 
       // Format the results to include full name
       const formattedResults = results.map((student) => ({

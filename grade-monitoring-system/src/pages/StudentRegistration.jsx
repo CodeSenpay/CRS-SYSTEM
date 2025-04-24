@@ -71,6 +71,12 @@ const StudentRegistration = () => {
         data.birthDate = data.birthDate.format("YYYY-MM-DD");
       }
 
+      // Convert course to course_code with correct value
+      if (data.course) {
+        data.course_code = data.course === "Computer Science" ? "BSCS" : "BSIS";
+        delete data.course; // Remove the original course property
+      }
+
       // API request to register student
       const response = await axios.post(
         "http://localhost:3000/api/system/register-student",
@@ -479,10 +485,8 @@ const StudentRegistration = () => {
                       status={errors.course ? "error" : ""}
                       style={{ width: "100%" }}
                     >
-                      <Option value="Computer Science">Computer Science</Option>
-                      <Option value="Information System">
-                        Information System
-                      </Option>
+                      <Option value="BSCS">Computer Science</Option>
+                      <Option value="BSIS">Information System</Option>
                     </Select>
                   )}
                 />

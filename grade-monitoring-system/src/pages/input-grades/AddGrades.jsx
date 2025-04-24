@@ -161,6 +161,9 @@ function AddGrades() {
         "http://localhost:3000/api/system/subject-students",
         {
           subjectCode: subject.subject_code,
+          schoolYear: schoolYear,
+          yearLevel: yearLevel,
+          semester: semester,
         },
         {
           headers: {
@@ -424,6 +427,14 @@ function AddGrades() {
   ];
 
   const handleViewStudents = (subject) => {
+    // Check if required filters are available
+    if (!schoolYear || !yearLevel || !semester) {
+      message.warning(
+        "Please select School Year, Year Level, and Semester first"
+      );
+      return;
+    }
+
     setSelectedSubject(subject);
     fetchStudentsForSubject(subject);
     setStudentModalVisible(true);

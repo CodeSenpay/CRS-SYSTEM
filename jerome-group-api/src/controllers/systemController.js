@@ -91,7 +91,7 @@ class SystemController {
         email: req.body.email,
         phoneNumber: req.body.phoneNumber,
         address: req.body.address,
-        course: req.body.course,
+        course_code: req.body.course_code,
         yearLevel: req.body.yearLevel,
         semester: req.body.semester,
         section: req.body.section,
@@ -402,7 +402,7 @@ class SystemController {
               email: student.email,
               phoneNumber: student.phoneNumber || "",
               address: student.address || "",
-              course: student.course || "Computer Science",
+              course_code: student.course_code || "BSCS",
               yearLevel: student.yearLevel || "1",
               semester: student.semester || "First",
               section: student.section || "",
@@ -482,7 +482,7 @@ class SystemController {
 
   async getStudentsForSubject(req, res) {
     try {
-      const { subjectCode } = req.body;
+      const { subjectCode, schoolYear, yearLevel, semester } = req.body;
 
       // Validate required parameters
       if (!subjectCode) {
@@ -494,7 +494,10 @@ class SystemController {
 
       // Call the model function to get students data
       const studentsData = await systemModel.getStudentsBySubjectCode(
-        subjectCode
+        subjectCode,
+        schoolYear,
+        yearLevel,
+        semester
       );
 
       return res.status(200).json({
